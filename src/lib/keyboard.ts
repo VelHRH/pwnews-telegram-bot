@@ -1,0 +1,19 @@
+import { Markup } from 'telegraf';
+
+export class KeyboardService {
+  static getMainKeyboard() {
+    return Markup.keyboard([
+      ['📝 Опубликовать обзор'],
+      ['🎉 Опубликовать результаты PPV/спецшоу'],
+      ['Опубликовать результаты еженедельника'],
+    ])
+      .resize()
+      .placeholder('Нажмите, чтобы создать пост');
+  }
+
+  static getCancelKeyboard() {
+    return Markup.keyboard([['❌ Отменить']])
+      .resize()
+      .oneTime();
+  }
+}

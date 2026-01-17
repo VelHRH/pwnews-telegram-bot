@@ -1,36 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PWNews Telegram Bot - Next.js Version
 
-## Getting Started
+A Telegram bot for managing PWNews content, built with Next.js and designed to run on Vercel with cron jobs.
 
-First, run the development server:
+## Features
+
+- 📝 Publish reviews from PWNews.net
+- 🎉 Publish PPV/special show results  
+- 📊 Publish weekly show results
+- ⏰ Automated daily publishing via Vercel cron jobs
+- 🔗 Handle PWNews.net URLs automatically
+
+## Setup
+
+### 1. Environment Variables
+
+Copy `.env.example` to `.env.local` and fill in your values:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Required variables:
+- `TELEGRAM_BOT_TOKEN` - Your Telegram bot token from @BotFather
+- `CHANNEL_USERNAME` - Your Telegram channel username (e.g., @yourchannel)
+- `CRON_SECRET` - Random secret string for cron job security
+- `NEXT_PUBLIC_APP_URL` - Your app URL (for webhooks)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Local Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+### 3. Deploy to Vercel
 
-To learn more about Next.js, take a look at the following resources:
+1. Push to GitHub
+2. Connect to Vercel
+3. Add environment variables in Vercel dashboard:
+   - `TELEGRAM_BOT_TOKEN`
+   - `CHANNEL_USERNAME` 
+   - `CRON_SECRET`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 4. Setup Telegram Webhook
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+After deployment, set up the webhook:
 
-## Deploy on Vercel
+```bash
+curl -X POST https://your-app.vercel.app/api/setup-webhook \
+  -H "Content-Type: application/json" \
+  -d '{"webhookUrl": "https://your-app.vercel.app/api/webhook"}'
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Or visit: `https://your-app.vercel.app/api/setup-webhook` and use the UI.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Bot Commands
+
+- **📝 Опубликовать обзор** - Fetch and publish latest review
+- **🎉 Опубликовать результаты PPV/спецшоу** - Publish PPV results
+- **Опубликовать результаты еженедельника** - Publish weekly show results
+
+## Cron Jobs
+
+The bot automatically publishes daily results at 7:30 AM Moscow time (4:30 UTC) via Vercel cron jobs.
+
+## API Endpoints
+
+- `POST /api/webhook` - Telegram webhook endpoint
+- `GET/POST /api/cron/daily-results` - Daily results cron job
+- `GET/POST/DELETE /api/setup-webhook` - Webhook management
+
+## Architecture
+
+- **Next.js App Router** - Modern React framework
+- **Telegraf** - Telegram bot framework
+- **Vercel Cron Jobs** - Scheduled tasks
+- **Webhook-based** - No polling, serverless-friendly
+
+## Migration from NestJS
+
+This version replaces the original NestJS version with:
+- Webhook instead of polling
+- Vercel cron jobs instead of @nestjs/schedule
+- Static methods instead of dependency injection
+- Serverless architecture
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+```
+
+## Troubleshooting
+
+### Webhook Issues
+- Check webhook status: `GET /api/setup-webhook`
+- Verify `TELEGRAM_BOT_TOKEN` is correct
+- Ensure webhook URL is accessible
+
+### Cron Job Issues  
+- Verify `CRON_SECRET` matches in Vercel
+- Check Vercel function logs
+- Ensure timezone is correct (UTC in vercel.json)
+
+### Bot Not Responding
+- Check webhook is set correctly
+- Verify environment variables
+- Check Vercel function logs
