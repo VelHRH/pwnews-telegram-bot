@@ -16,18 +16,18 @@ export class NewsService {
     for (let i = 0; i < sentences.length; i++) {
       const sentence = sentences[i].trim();
 
-      // Проверяем, содержит ли предложение одно из имен рецензентов
+      // Check if the sentence contains one of the reviewer names
       const containsReviewerName = reviewersNames.some(name =>
         sentence.toLowerCase().includes(name.toLowerCase())
       );
 
       if (containsReviewerName) {
-        // Возвращаем текст до этого предложения
+        // Return text up to this sentence
         return sentences.slice(0, i).join('. ').trim() + (sentences.slice(0, i).length > 0 ? '.' : '');
       }
     }
 
-    // Если имя рецензента не найдено, возвращаем весь текст
+    // If reviewer name not found, return the entire text
     return text;
   }
 
@@ -415,7 +415,7 @@ export class NewsService {
         Markup.keyboard([['✅ Да', '❌ Нет']]).resize(),
       );
 
-      // Сохраняем данные для последующего использования
+      // Save data for later use
       if (ctx.from?.id) {
         this.pendingPublications.set(ctx.from.id, {
           text,
@@ -499,7 +499,7 @@ export class NewsService {
   static async publishOtherNews(ctx: Context): Promise<void> {
     const userId = ctx.from!.id;
 
-    // Начинаем процесс - запрашиваем URL
+    // Start the process - request URL
     this.pendingOtherNews.set(userId, {
       step: 'waiting_url'
     });
@@ -515,11 +515,11 @@ export class NewsService {
     const pending = this.pendingOtherNews.get(userId);
 
     if (!pending) {
-      return false; // Не обрабатываем, если нет активного процесса
+      return false; // Don't handle if there's no active process
     }
 
     if (pending.step === 'waiting_url') {
-      // Проверяем, что это валидная ссылка
+      // Check that this is a valid link
       const urlRegex = /^https?:\/\/.+/;
       if (!urlRegex.test(text)) {
         await ctx.reply('❌ Пожалуйста, отправьте корректную ссылку (начинающуюся с http:// или https://)');
@@ -527,26 +527,26 @@ export class NewsService {
       }
 
       try {
-        // Получаем информацию о странице
+        // Get page information
         const response = await fetch(text);
         const html = await response.text();
 
-        // Извлекаем title
+        // Extract title
         const titleMatch = html.match(/<title>(.*?)<\/title>/i);
         const title = titleMatch ? titleMatch[1].trim().split(' - ')[0] : 'Без заголовка';
 
-        // Извлекаем изображение
+        // Extract image
         const imageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)/i) ||
           html.match(/<img[^>]*src=["']([^"']*)/i);
         let imageUrl = imageMatch ? imageMatch[1] : '';
 
-        // Делаем URL изображения абсолютным
+        // Make image URL absolute
         if (imageUrl && !imageUrl.startsWith('http')) {
           const baseUrl = new URL(text).origin;
           imageUrl = imageUrl.startsWith('/') ? baseUrl + imageUrl : baseUrl + '/' + imageUrl;
         }
 
-        // Обновляем состояние
+        // Update state
         this.pendingOtherNews.set(userId, {
           step: 'waiting_button_text',
           url: text,
@@ -575,7 +575,7 @@ export class NewsService {
         buttonText
       };
 
-      // Создаем финальное сообщение
+      // Create final message
       const postText = finalPost.title + (finalPost.description ? `\n\n${finalPost.description}` : '');
 
       const inlineKeyboard = {
@@ -589,7 +589,7 @@ export class NewsService {
         ],
       };
 
-      // Отправляем превью поста
+      // Send post preview
       if (finalPost.imageUrl) {
         try {
           await ctx.replyWithPhoto(finalPost.imageUrl, {
@@ -597,7 +597,7 @@ export class NewsService {
             reply_markup: inlineKeyboard,
           });
         } catch (error) {
-          // Если изображение не загружается, отправляем без него
+          // If image doesn't load, send without it
           await ctx.reply(postText, { reply_markup: inlineKeyboard });
         }
       } else {
@@ -609,7 +609,7 @@ export class NewsService {
         KeyboardService.getOtherNewsConfirmKeyboard()
       );
 
-      // Сохраняем финальные данные для публикации
+      // Save final data for publication
       this.pendingOtherNews.set(userId, {
         step: 'ready_to_publish',
         url: finalPost.url!,
@@ -652,7 +652,7 @@ export class NewsService {
         ],
       };
 
-      // Публикуем в канал
+      // Publish to channel
       if (pending.imageUrl) {
         try {
           await ctx.telegram.sendPhoto(this.channelId, pending.imageUrl, {
@@ -660,7 +660,7 @@ export class NewsService {
             reply_markup: inlineKeyboard,
           });
         } catch (error) {
-          // Если изображение не загружается, отправляем без него
+          // If image doesn't load, send without it
           await ctx.telegram.sendMessage(this.channelId, postText, {
             reply_markup: inlineKeyboard
           });
@@ -671,7 +671,7 @@ export class NewsService {
         });
       }
 
-      // Очищаем состояние и возвращаем к основному меню
+      // Clear state and return to main menu
       this.pendingOtherNews.delete(userId);
       await ctx.reply('✅ Новость успешно опубликована!', KeyboardService.getMainKeyboard());
 
