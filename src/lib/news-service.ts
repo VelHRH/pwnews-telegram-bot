@@ -320,72 +320,137 @@ export class NewsService {
   }
 
   static async publishWeeklyResults(ctx: Context): Promise<void> {
-    try {
-      const today = new Date();
-      const dayOfWeek = today.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    if (!this.channelId) {
+      await ctx.reply('Ошибка: ID канала не настроен');
+      return;
+    }
 
-      if (!isWeekend) {
-        await ctx.reply('Публикация результатов еженедельника доступна только по выходным');
-        return;
-      }
+    const responseAllReviews = await fetch('https://pwnews.net/stuff/');
+    const htmlAllReviews = await responseAllReviews.text();
+    const linkMatch = htmlAllReviews.match(
+      /href="([^"]+)">Результаты (WWE|AEW) /,
+    );
 
-      const showsToCheck = Object.values(WeeklyShow);
-      const results: Array<{ show: WeeklyShow; data: unknown }> = [];
+    const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : '';
 
-      for (const show of showsToCheck) {
-        try {
-          const response = await fetch(`https://pwnews.net/news/1-0-${this.getShowCategoryId(show)}`);
-          const html = await response.text();
+    if (!url) {
+      await ctx.reply('Не удалось получить ссылку на обзор');
+      return;
+    }
 
-          const linkMatch = html.match(/href="([^"]+)">Результаты /);
-          if (linkMatch) {
-            const url = `https://pwnews.net${linkMatch[1]}`;
-            const articleResponse = await fetch(url);
-            const articleHtml = await articleResponse.text();
+    const response = await fetch(url);
+    const html = await response.text();
 
-            const title = articleHtml.match(/<title>(.*?)<\/title>/);
-            const showName = WeeklyShowNames[show];
+    const title = html.match(/<title>(.*?)<\/title>/);
+    const show = Object.values(WeeklyShow).find((show) =>
+      title?.[1].toUpperCase().includes(show),
+    );
 
-            if (title && title[1].includes(showName)) {
-              results.push({ show, data: { url, title: title[1] } });
-            }
-          }
-        } catch (error) {
-          console.error(`Error checking ${show}:`, error);
-        }
-      }
+    if (!show) {
+      await ctx.reply('Не удалось получить название шоу из заголовка');
+      return;
+    }
 
-      if (results.length === 0) {
-        await ctx.reply('Нет новых результатов еженедельников для публикации');
-        return;
-      }
+    const normalizedShow = WeeklyShowNames[show];
 
-      let message = 'Найдены результаты следующих шоу:\n\n';
-      results.forEach(({ show }) => {
-        message += `• ${WeeklyShowNames[show]}\n`;
+    const dateMatch = title?.[1].match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    if (!dateMatch) {
+      await ctx.reply('Не удалось получить дату из заголовка');
+      return;
+    }
+
+    const [, day, month, year] = dateMatch;
+    const postDate = new Date(`${year}-${month}-${day}`);
+    const oneDayAgo = new Date(new Date().setHours(0, 0, 0, 0));
+    oneDayAgo.setTime(oneDayAgo.getTime() - 24 * 60 * 60 * 1000);
+
+    const responseVideo = await fetch('https://pwnews.net/blog/');
+    const htmlVideo = await responseVideo.text();
+    const dateSearch = `${day}.${month}.${year}`;
+
+    const lines = htmlVideo.split('\n');
+    const targetLine = lines.find(
+      (line) => line.includes(normalizedShow) && line.includes(dateSearch),
+    );
+
+    let videoUrl = '';
+    let videoImageUrl = '';
+
+    if (targetLine) {
+      const hrefMatch = targetLine.match(/href="([^"]+)"/);
+      const srcMatch = targetLine.match(/src="([^"]+)"/);
+
+      videoUrl = hrefMatch ? `https://pwnews.net${hrefMatch[1]}` : '';
+      videoImageUrl = srcMatch
+        ? srcMatch[1].startsWith('http')
+          ? srcMatch[1]
+          : `https://pwnews.net${srcMatch[1]}`
+        : '';
+    }
+
+    if (!videoUrl || !videoImageUrl) {
+      await ctx.reply('Видео для данного эфира не найдено');
+      return;
+    }
+
+    const text = `Итоги и результаты сегодняшнего эфира ${normalizedShow} (+ онлайн запись шоу)`;
+
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: 'Результаты'.toUpperCase(), url },
+          { text: 'Смотреть'.toUpperCase(), url: videoUrl },
+        ],
+      ],
+    };
+
+    if (postDate < oneDayAgo) {
+      await ctx.sendPhoto(videoImageUrl.replace(/\/s/g, '/'), {
+        caption: `${text} \n\n• Результаты: ${url.replace('https://', '')} \n• Смотреть: ${videoUrl.replace('https://', '')}`,
+        reply_markup: inlineKeyboard,
       });
-      message += '\nОпубликовать все результаты?';
-
       await ctx.reply(
-        message,
-        Markup.keyboard([['✅ Да'], ['❌ Нет']])
-          .resize()
-          .oneTime(),
+        `Последние результаты (${title?.[1]}) слишком старые. Действительно ли я должен опубликовть их? Если что, я сам проверяю актуальые результаты каждый день в 7:30.`,
+        Markup.keyboard([['✅ Да', '❌ Нет']]).resize(),
       );
 
-      // Store results for confirmation
-      this.pendingPublications.set(ctx.from!.id, {
-        text: message,
-        url: '',
-        videoUrl: '',
-        videoImageUrl: '',
-        inlineKeyboard: { inline_keyboard: [] }
-      });
-    } catch (error) {
-      console.error('Error in publishWeeklyResults:', error);
-      await ctx.reply('Произошла ошибка при получении результатов еженедельников');
+      // Сохраняем данные для последующего использования
+      if (ctx.from?.id) {
+        this.pendingPublications.set(ctx.from.id, {
+          text,
+          url,
+          videoUrl,
+          videoImageUrl: videoImageUrl.replace(/\/s/g, '/'),
+          inlineKeyboard,
+        });
+      }
+
+      return;
     }
+
+    await ctx.telegram.sendPhoto(
+      this.channelId,
+      videoImageUrl.replace(/\/s/g, '/'),
+      {
+        caption: this.formatNewsCaption(text, url, videoUrl),
+        parse_mode: 'MarkdownV2',
+        reply_markup: inlineKeyboard,
+      },
+    );
+
+    await ctx.reply(`Результаты ${normalizedShow} успешно опубликованы!`);
+  }
+
+  private static escapeMarkdown(text: string): string {
+    return text.replace(/[[\](){}*_#+\-=|>.]/g, '\\$&');
+  }
+
+  private static formatNewsCaption(
+    text: string,
+    url: string,
+    videoUrl: string,
+  ): string {
+    return `${this.escapeMarkdown(text)} \n\n• *Результаты:* ${this.escapeMarkdown(url.replace('https://', ''))} \n• *Смотреть:* ${this.escapeMarkdown(videoUrl.replace('https://', ''))}`;
   }
 
   static async handleWeeklyConfirmation(ctx: Context, confirmed: boolean): Promise<void> {
@@ -401,16 +466,6 @@ export class NewsService {
     this.pendingPublications.delete(userId);
   }
 
-  private static getShowCategoryId(show: WeeklyShow): number {
-    const categoryMap = {
-      [WeeklyShow.RAW]: 24,
-      [WeeklyShow.SMACKDOWN]: 25,
-      [WeeklyShow.DYNAMITE]: 26,
-      [WeeklyShow.COLLISION]: 27,
-      [WeeklyShow.NXT]: 28,
-    };
-    return categoryMap[show] || 24;
-  }
 
   // Method for cron job to publish daily results
   static async publishDailyResults(): Promise<void> {
