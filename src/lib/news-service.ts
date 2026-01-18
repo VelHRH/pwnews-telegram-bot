@@ -646,7 +646,7 @@ export class NewsService {
           [
             {
               text: pending.buttonText!,
-              url: pending.url,
+              url: pending.url!,
             },
           ],
         ],
