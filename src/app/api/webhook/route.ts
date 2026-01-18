@@ -76,7 +76,7 @@ function setupBotHandlers() {
 
   // Text message handler
   bot.on('text', async (ctx: Context) => {
-    const text = ctx.message?.text;
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
 
     if (!text) return;
 
