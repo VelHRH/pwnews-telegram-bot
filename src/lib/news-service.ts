@@ -1,4 +1,4 @@
-import { Context, PendingPublication, PendingPPVPublication, PendingReview } from '@/types/telegram';
+import { Context, PendingPublication, PendingPPVPublication, PendingReview, PendingOtherNews } from '@/types/telegram';
 import { Markup } from 'telegraf';
 import { KeyboardService } from './keyboard';
 import { WeeklyShow, WeeklyShowNames } from '@/constants/weekly-shows';
@@ -8,6 +8,7 @@ export class NewsService {
   private static pendingPublications = new Map<number, PendingPublication>();
   private static pendingPPVPublications = new Map<number, PendingPPVPublication>();
   private static pendingReviews = new Map<number, PendingReview>();
+  private static pendingOtherNews = new Map<number, PendingOtherNews>();
 
   private static trimTextAtReviewerName(text: string): string {
     const sentences = text.split(/[.!?]+/).filter(sentence => sentence.trim().length > 0);
@@ -492,6 +493,192 @@ export class NewsService {
       console.log('Daily results publication completed successfully');
     } catch (error) {
       console.error('Error in daily results publication:', error);
+    }
+  }
+
+  static async publishOtherNews(ctx: Context): Promise<void> {
+    const userId = ctx.from!.id;
+
+    // Начинаем процесс - запрашиваем URL
+    this.pendingOtherNews.set(userId, {
+      step: 'waiting_url'
+    });
+
+    await ctx.reply(
+      '🔗 Пожалуйста, отправьте ссылку на страницу, которую хотите опубликовать:',
+      KeyboardService.getOtherNewsKeyboard()
+    );
+  }
+
+  static async handleOtherNewsInput(ctx: Context, text: string): Promise<boolean> {
+    const userId = ctx.from!.id;
+    const pending = this.pendingOtherNews.get(userId);
+
+    if (!pending) {
+      return false; // Не обрабатываем, если нет активного процесса
+    }
+
+    if (pending.step === 'waiting_url') {
+      // Проверяем, что это валидная ссылка
+      const urlRegex = /^https?:\/\/.+/;
+      if (!urlRegex.test(text)) {
+        await ctx.reply('❌ Пожалуйста, отправьте корректную ссылку (начинающуюся с http:// или https://)');
+        return true;
+      }
+
+      try {
+        // Получаем информацию о странице
+        const response = await fetch(text);
+        const html = await response.text();
+
+        // Извлекаем title
+        const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].trim().split(' - ')[0] : 'Без заголовка';
+
+        // Извлекаем изображение
+        const imageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)/i) ||
+          html.match(/<img[^>]*src=["']([^"']*)/i);
+        let imageUrl = imageMatch ? imageMatch[1] : '';
+
+        // Делаем URL изображения абсолютным
+        if (imageUrl && !imageUrl.startsWith('http')) {
+          const baseUrl = new URL(text).origin;
+          imageUrl = imageUrl.startsWith('/') ? baseUrl + imageUrl : baseUrl + '/' + imageUrl;
+        }
+
+        // Обновляем состояние
+        this.pendingOtherNews.set(userId, {
+          step: 'waiting_button_text',
+          url: text,
+          title,
+          imageUrl
+        });
+
+        await ctx.reply(
+          `✅ Страница загружена!\n\n📄 **${title}**\n\n🔘 Теперь введите текст для кнопки под постом (напрмер "ОЦЕНКИ"):`,
+          {
+            parse_mode: 'Markdown',
+            ...KeyboardService.getOtherNewsKeyboard()
+          }
+        );
+
+      } catch (error) {
+        await ctx.reply('❌ Не удалось загрузить страницу. Проверьте ссылку и попробуйте снова.');
+        return true;
+      }
+
+    } else if (pending.step === 'waiting_button_text') {
+      const buttonText = text.trim() || "ОЦЕНКИ";
+
+      const finalPost = {
+        ...pending,
+        buttonText
+      };
+
+      // Создаем финальное сообщение
+      const postText = finalPost.title + (finalPost.description ? `\n\n${finalPost.description}` : '');
+
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: buttonText,
+              url: finalPost.url!,
+            },
+          ],
+        ],
+      };
+
+      // Отправляем превью поста
+      if (finalPost.imageUrl) {
+        try {
+          await ctx.replyWithPhoto(finalPost.imageUrl, {
+            caption: postText,
+            reply_markup: inlineKeyboard,
+          });
+        } catch (error) {
+          // Если изображение не загружается, отправляем без него
+          await ctx.reply(postText, { reply_markup: inlineKeyboard });
+        }
+      } else {
+        await ctx.reply(postText, { reply_markup: inlineKeyboard });
+      }
+
+      await ctx.reply(
+        'Проверьте пост и выберите действие:',
+        KeyboardService.getOtherNewsConfirmKeyboard()
+      );
+
+      // Сохраняем финальные данные для публикации
+      this.pendingOtherNews.set(userId, {
+        step: 'ready_to_publish',
+        url: finalPost.url!,
+        title: finalPost.title!,
+        description: finalPost.description || '',
+        imageUrl: finalPost.imageUrl || '',
+        buttonText: buttonText
+      });
+    }
+
+    return true;
+  }
+
+  static async cancelOtherNews(ctx: Context): Promise<void> {
+    const userId = ctx.from!.id;
+    this.pendingOtherNews.delete(userId);
+    await ctx.reply('❌ Публикация отменена.', KeyboardService.getMainKeyboard());
+  }
+
+  static async publishOtherNewsToChannel(ctx: Context): Promise<void> {
+    const userId = ctx.from!.id;
+    const pending = this.pendingOtherNews.get(userId);
+
+    if (!pending || pending.step !== 'ready_to_publish') {
+      await ctx.reply('❌ Нет данных для публикации', KeyboardService.getMainKeyboard());
+      return;
+    }
+
+    try {
+      const postText = pending.title + (pending.description ? `\n\n${pending.description}` : '');
+
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: pending.buttonText!,
+              url: pending.url,
+            },
+          ],
+        ],
+      };
+
+      // Публикуем в канал
+      if (pending.imageUrl) {
+        try {
+          await ctx.telegram.sendPhoto(this.channelId, pending.imageUrl, {
+            caption: postText,
+            reply_markup: inlineKeyboard,
+          });
+        } catch (error) {
+          // Если изображение не загружается, отправляем без него
+          await ctx.telegram.sendMessage(this.channelId, postText, {
+            reply_markup: inlineKeyboard
+          });
+        }
+      } else {
+        await ctx.telegram.sendMessage(this.channelId, postText, {
+          reply_markup: inlineKeyboard
+        });
+      }
+
+      // Очищаем состояние и возвращаем к основному меню
+      this.pendingOtherNews.delete(userId);
+      await ctx.reply('✅ Новость успешно опубликована!', KeyboardService.getMainKeyboard());
+
+    } catch (error) {
+      console.error('Error publishing other news:', error);
+      await ctx.reply('❌ Ошибка при публикации. Попробуйте еще раз.', KeyboardService.getMainKeyboard());
+      this.pendingOtherNews.delete(userId);
     }
   }
 }

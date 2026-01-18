@@ -74,11 +74,30 @@ function setupBotHandlers() {
     await NewsService.handleWeeklyConfirmation(ctx, false);
   });
 
+  // Other news handler
+  bot.hears('🔗 Опубликовать другое', async (ctx: Context) => {
+    await NewsService.publishOtherNews(ctx);
+  });
+
+  // Cancel handler for "other news" process
+  bot.hears('❌ Отмена', async (ctx: Context) => {
+    await NewsService.cancelOtherNews(ctx);
+  });
+
+  // Publish handler for "other news"
+  bot.hears('✅ Опубликовать', async (ctx: Context) => {
+    await NewsService.publishOtherNewsToChannel(ctx);
+  });
+
   // Text message handler
   bot.on('text', async (ctx: Context) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
 
     if (!text) return;
+
+    // First check if user is in "other news" creation process
+    const isHandledByOtherNews = await NewsService.handleOtherNewsInput(ctx, text);
+    if (isHandledByOtherNews) return;
 
     // Check if the message contains a pwnews.net URL
     const urlMatch = text.match(/(https?:\/\/(?:www\.)?pwnews\.net[^\s]+)/);
@@ -92,6 +111,7 @@ function setupBotHandlers() {
       await NewsService.handleReviewResponse(ctx, text);
     }
   });
+
 
   handlersSetup = true;
   return bot;

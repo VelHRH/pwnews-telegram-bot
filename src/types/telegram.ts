@@ -47,3 +47,12 @@ export interface PendingReview {
         >;
     };
 }
+
+export interface PendingOtherNews {
+    step: 'waiting_url' | 'waiting_button_text' | 'ready_to_publish';
+    url?: string;
+    title?: string;
+    description?: string;
+    imageUrl?: string;
+    buttonText?: string;
+}

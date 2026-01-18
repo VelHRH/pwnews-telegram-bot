@@ -6,6 +6,7 @@ export class KeyboardService {
       ['📝 Опубликовать обзор'],
       ['🎉 Опубликовать результаты PPV/спецшоу'],
       ['Опубликовать результаты еженедельника'],
+      ['🔗 Опубликовать другое'],
     ])
       .resize()
       .placeholder('Нажмите, чтобы создать пост');
@@ -13,6 +14,21 @@ export class KeyboardService {
 
   static getCancelKeyboard() {
     return Markup.keyboard([['❌ Отменить']])
+      .resize()
+      .oneTime();
+  }
+
+  static getOtherNewsKeyboard() {
+    return Markup.keyboard([['❌ Отмена']])
+      .resize()
+      .oneTime();
+  }
+
+  static getOtherNewsConfirmKeyboard() {
+    return Markup.keyboard([
+      ['✅ Опубликовать'],
+      ['❌ Отмена']
+    ])
       .resize()
       .oneTime();
   }
