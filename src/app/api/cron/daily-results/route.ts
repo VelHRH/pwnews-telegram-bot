@@ -1,19 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NewsService } from '@/lib/news-service';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(request: NextRequest) {
   try {
-    // Verify the request is from Vercel Cron
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     console.log('Starting daily results publication cron job');
-    await NewsService.publishDailyResults();
+    const success = await NewsService.publishDailyResults();
+
+    if (!success) {
+      console.error('Daily results publication failed');
+      return NextResponse.json({
+        error: 'Publication failed',
+        message: 'Failed to publish daily results. Check logs for details.',
+        timestamp: new Date().toISOString()
+      }, { status: 500 });
+    }
 
     return NextResponse.json({
-      message: 'Daily results publication completed',
+      message: 'Daily results publication completed successfully',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

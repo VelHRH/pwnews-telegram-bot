@@ -3,6 +3,7 @@ import { Markup } from 'telegraf';
 import { KeyboardService } from './keyboard';
 import { WeeklyShow, WeeklyShowNames } from '@/constants/weekly-shows';
 import { reviewersNames } from '@/constants/reviewers';
+import { getBot } from './bot';
 
 export class NewsService {
   private static pendingPublications = new Map<number, PendingPublication>();
@@ -468,31 +469,112 @@ export class NewsService {
   }
 
 
-  // Method for cron job to publish daily results
-  static async publishDailyResults(): Promise<void> {
+  // Method for cron job to publish daily results automatically
+  static async publishDailyResults(): Promise<boolean> {
     try {
-      console.log('Starting daily results publication at 7:30 Moscow time');
 
-      // Create a mock context for automated execution
-      const mockContext = {
-        reply: (message: string) => {
-          console.warn(`Auto-publish warning: ${message}`);
-        },
-        telegram: {
-          sendMessage: async (chatId: string, text: string) => {
-            console.log(`Would send to ${chatId}: ${text}`);
-          },
-          sendPhoto: async (chatId: string, photo: string) => {
-            console.log(`Would send photo to ${chatId}: ${photo}`);
-          }
-        },
-        from: { id: 0 }
-      } as unknown as Context;
+      if (!this.channelId) {
+        console.error('Error: CHANNEL_USERNAME is not defined in environment variables');
+        return false;
+      }
 
-      await this.publishWeeklyResults(mockContext);
-      console.log('Daily results publication completed successfully');
+      // Get bot instance to send messages
+      const bot = getBot();
+
+      // Fetch latest results from pwnews.net
+      const responseAllReviews = await fetch('https://pwnews.net/stuff/');
+      const htmlAllReviews = await responseAllReviews.text();
+      const linkMatch = htmlAllReviews.match(
+        /href="([^"]+)">Результаты (WWE|AEW) /,
+      );
+
+      const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : '';
+
+      if (!url) {
+        console.error('Failed to get results link from pwnews.net/stuff/');
+        return false;
+      }
+
+      const response = await fetch(url);
+      const html = await response.text();
+
+      const title = html.match(/<title>(.*?)<\/title>/);
+      const show = Object.values(WeeklyShow).find((show) =>
+        title?.[1].toUpperCase().includes(show),
+      );
+
+      if (!show) {
+        console.error('Failed to extract show name from title:', title?.[1]);
+        return false;
+      }
+
+      const normalizedShow = WeeklyShowNames[show];
+
+      const dateMatch = title?.[1].match(/(\d{2})\.(\d{2})\.(\d{4})/);
+      if (!dateMatch) {
+        console.error('Failed to extract date from title:', title?.[1]);
+        return false;
+      }
+
+      const [, day, month, year] = dateMatch;
+      const dateSearch = `${day}.${month}.${year}`;
+
+      // Fetch video information
+      const responseVideo = await fetch('https://pwnews.net/blog/');
+      const htmlVideo = await responseVideo.text();
+
+      const lines = htmlVideo.split('\n');
+      const targetLine = lines.find(
+        (line) => line.includes(normalizedShow) && line.includes(dateSearch),
+      );
+
+      let videoUrl = '';
+      let videoImageUrl = '';
+
+      if (targetLine) {
+        const hrefMatch = targetLine.match(/href="([^"]+)"/);
+        const srcMatch = targetLine.match(/src="([^"]+)"/);
+
+        videoUrl = hrefMatch ? `https://pwnews.net${hrefMatch[1]}` : '';
+        videoImageUrl = srcMatch
+          ? srcMatch[1].startsWith('http')
+            ? srcMatch[1]
+            : `https://pwnews.net${srcMatch[1]}`
+          : '';
+      }
+
+      if (!videoUrl || !videoImageUrl) {
+        console.error('Video not found for show:', normalizedShow, 'date:', dateSearch);
+        return false;
+      }
+
+      const text = `Итоги и результаты сегодняшнего эфира ${normalizedShow} (+ онлайн запись шоу)`;
+
+      const inlineKeyboard = {
+        inline_keyboard: [
+          [
+            { text: 'Результаты'.toUpperCase(), url },
+            { text: 'Смотреть'.toUpperCase(), url: videoUrl },
+          ],
+        ],
+      };
+
+      // Publish directly to channel
+      await bot.telegram.sendPhoto(
+        this.channelId,
+        videoImageUrl.replace(/\/s/g, '/'),
+        {
+          caption: this.formatNewsCaption(text, url, videoUrl),
+          parse_mode: 'MarkdownV2',
+          reply_markup: inlineKeyboard,
+        },
+      );
+
+      console.log(`Daily results for ${normalizedShow} published successfully`);
+      return true;
     } catch (error) {
       console.error('Error in daily results publication:', error);
+      return false;
     }
   }
 
