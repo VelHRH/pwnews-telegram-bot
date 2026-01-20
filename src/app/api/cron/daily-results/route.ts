@@ -11,14 +11,14 @@ export async function GET(request: NextRequest) {
 
     console.log('Starting daily results publication cron job');
     await NewsService.publishDailyResults();
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       message: 'Daily results publication completed',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('Cron job error:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
