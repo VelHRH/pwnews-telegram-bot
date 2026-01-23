@@ -83,7 +83,7 @@ export class NewsService {
         inline_keyboard: [
           [
             {
-              text: '📖 Читать на сайте',
+              text: 'ЧИТАТЬ ОБЗОР',
               url: url,
             },
           ],
@@ -241,7 +241,7 @@ export class NewsService {
         inline_keyboard: [
           [
             {
-              text: '📖 Читать на сайте',
+              text: 'РЕЗУЛЬТАТЫ',
               url: articleUrl,
             },
           ],
@@ -249,7 +249,7 @@ export class NewsService {
             ? [
               [
                 {
-                  text: '📺 Смотреть видео',
+                  text: 'СМОТРЕТЬ',
                   url: videoUrl,
                 },
               ],
@@ -518,6 +518,15 @@ export class NewsService {
 
       const [, day, month, year] = dateMatch;
       const dateSearch = `${day}.${month}.${year}`;
+
+      const postDate = new Date(`${year}-${month}-${day}`);
+      const oneDayAgo = new Date(new Date().setHours(0, 0, 0, 0));
+      oneDayAgo.setTime(oneDayAgo.getTime() - 24 * 60 * 60 * 1000);
+
+      if (postDate < oneDayAgo) {
+        console.log(`Skipping publication: Results are too old`);
+        return true;
+      }
 
       // Fetch video information
       const responseVideo = await fetch('https://pwnews.net/blog/');
