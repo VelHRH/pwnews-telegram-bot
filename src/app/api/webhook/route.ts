@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBot } from '@/lib/bot';
+import { adminOnlyMiddleware } from '@/lib/admins';
 import { NewsService } from '@/lib/news-service';
 import { KeyboardService } from '@/lib/keyboard';
 import { Context } from '@/types/telegram';
@@ -13,6 +14,8 @@ function setupBotHandlers() {
   if (handlersSetup) {
     return bot;
   }
+
+  bot.use(adminOnlyMiddleware);
 
   // Setup bot handlers
   bot.start(async (ctx: Context) => {
