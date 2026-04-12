@@ -1,30 +1,70 @@
-import { Context, PendingPublication, PendingPPVPublication, PendingReview, PendingOtherNews } from '@/types/telegram';
-import { Markup } from 'telegraf';
-import { KeyboardService } from './keyboard';
-import { WeeklyShow, WeeklyShowNames } from '@/constants/weekly-shows';
-import { reviewersNames } from '@/constants/reviewers';
-import { getBot } from './bot';
+import {
+  Context,
+  PendingPublication,
+  PendingPPVPublication,
+  PendingReview,
+  PendingOtherNews,
+} from "@/types/telegram";
+import { Markup } from "telegraf";
+import { KeyboardService } from "./keyboard";
+import { WeeklyShow, WeeklyShowNames } from "@/constants/weekly-shows";
+import { reviewersNames } from "@/constants/reviewers";
+import { getBot } from "./bot";
 
 export class NewsService {
   private static pendingPublications = new Map<number, PendingPublication>();
-  private static pendingPPVPublications = new Map<number, PendingPPVPublication>();
+  private static pendingPPVPublications = new Map<
+    number,
+    PendingPPVPublication
+  >();
   private static pendingReviews = new Map<number, PendingReview>();
   private static pendingOtherNews = new Map<number, PendingOtherNews>();
 
+  /** PWNews often repeats the article headline as the first block inside textmessage; drop it when the real body follows. */
+  private static stripDuplicateReviewLeadParagraph(text: string): string {
+    const t = text.trim();
+    if (!t) {
+      return t;
+    }
+
+    const titleLike = (s: string) =>
+      /^Обзор\s.+-\s*Новости/i.test(s.trim());
+
+    const blocks = t
+      .split(/\n\s*\n/)
+      .map((b) => b.trim())
+      .filter(Boolean);
+    if (blocks.length >= 2 && titleLike(blocks[0])) {
+      return blocks.slice(1).join("\n\n").trim();
+    }
+
+    const lines = t.split(/\n/);
+    if (lines.length >= 2 && titleLike(lines[0])) {
+      return lines.slice(1).join("\n").trim();
+    }
+
+    return t;
+  }
+
   private static trimTextAtReviewerName(text: string): string {
-    const sentences = text.split(/[.!?]+/).filter(sentence => sentence.trim().length > 0);
+    const sentences = text
+      .split(/[.!?]+/)
+      .filter((sentence) => sentence.trim().length > 0);
 
     for (let i = 0; i < sentences.length; i++) {
       const sentence = sentences[i].trim();
 
       // Check if the sentence contains one of the reviewer names
-      const containsReviewerName = reviewersNames.some(name =>
-        sentence.toLowerCase().includes(name.toLowerCase())
+      const containsReviewerName = reviewersNames.some((name) =>
+        sentence.toLowerCase().includes(name.toLowerCase()),
       );
 
       if (containsReviewerName) {
         // Return text up to this sentence
-        return sentences.slice(0, i).join('. ').trim() + (sentences.slice(0, i).length > 0 ? '.' : '');
+        return (
+          sentences.slice(0, i).join(". ").trim() +
+          (sentences.slice(0, i).length > 0 ? "." : "")
+        );
       }
     }
 
@@ -34,56 +74,58 @@ export class NewsService {
 
   private static get channelId(): string {
     if (!process.env.CHANNEL_USERNAME) {
-      throw new Error('CHANNEL_USERNAME is not defined in environment variables');
+      throw new Error(
+        "CHANNEL_USERNAME is not defined in environment variables",
+      );
     }
     return process.env.CHANNEL_USERNAME;
   }
 
   static async publishReview(ctx: Context): Promise<void> {
     try {
-      const responseAllReviews = await fetch('https://pwnews.net/news/1-0-23');
+      const responseAllReviews = await fetch("https://pwnews.net/news/1-0-23");
       const htmlAllReviews = await responseAllReviews.text();
       const linkMatch = htmlAllReviews.match(/href="([^"]+)">Обзор /);
-      const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : '';
+      const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : "";
       console.log(url);
       if (!url) {
-        await ctx.reply('Не удалось получить ссылку на обзор');
+        await ctx.reply("Не удалось получить ссылку на обзор");
         return;
       }
 
       const response = await fetch(url);
       const html = await response.text();
 
-      const title = html.match(/<title>(.*?)<\/title>/);
-      const textMessageMatch = html.match(/<div class="textmessage">(.*?)<\/div>/s);
+      const textMessageMatch = html.match(
+        /<div class="textmessage">(.*?)<\/div>/s,
+      );
       const imageMatch = html.match(/<img[^>]+src="([^">]+)"/);
 
       const rawTextMessage = textMessageMatch
         ? textMessageMatch[1]
-          .split('</p>')[0]
-          .replace(/<[^>]*>/g, '')
-          .replace(/<p.*?>/g, '')
-          .trim()
-        : '';
+            .split("</p>")[0]
+            .replace(/<[^>]*>/g, "")
+            .replace(/<p.*?>/g, "")
+            .trim()
+        : "";
 
-      const textMessage = this.trimTextAtReviewerName(rawTextMessage);
-
-
+      const textMessage = this.trimTextAtReviewerName(
+        this.stripDuplicateReviewLeadParagraph(rawTextMessage),
+      );
 
       const imageUrl = imageMatch
-        ? imageMatch[1].startsWith('http')
+        ? imageMatch[1].startsWith("http")
           ? imageMatch[1]
           : `https://pwnews.net${imageMatch[1]}`
-        : '';
-      const cleanTitle = title ? title[1].replace(' - PWNews.net', '') : '';
+        : "";
 
-      const text = `${cleanTitle}\n\n${textMessage}`;
+      const text = textMessage;
 
       const inlineKeyboard = {
         inline_keyboard: [
           [
             {
-              text: 'ЧИТАТЬ ОБЗОР',
+              text: "ЧИТАТЬ ОБЗОР",
               url: url,
             },
           ],
@@ -107,66 +149,79 @@ export class NewsService {
       }
 
       await ctx.reply(
-        'Проверьте пост и выберите действие:',
+        "Проверьте пост и выберите действие:",
         Markup.keyboard([
-          ['✅ Опубликовать обзор'],
-          ['📝 Изменить текст обзора'],
-          ['❌ Отменить публикацию обзора'],
+          ["✅ Опубликовать обзор"],
+          ["📝 Изменить текст обзора"],
+          ["❌ Отменить публикацию обзора"],
         ])
           .resize()
           .oneTime(),
       );
     } catch (error) {
-      console.error('Error in publishReview:', error);
-      await ctx.reply('Произошла ошибка при получении обзора');
+      console.error("Error in publishReview:", error);
+      await ctx.reply("Произошла ошибка при получении обзора");
     }
   }
 
-  static async handleReviewResponse(ctx: Context, response: string): Promise<void> {
+  static async handleReviewResponse(
+    ctx: Context,
+    response: string,
+  ): Promise<void> {
     const userId = ctx.from!.id;
     const pendingReview = this.pendingReviews.get(userId);
 
     if (!pendingReview) {
-      await ctx.reply('Нет ожидающего обзора для публикации');
+      await ctx.reply("Нет ожидающего обзора для публикации");
       return;
     }
 
     switch (response) {
-      case '✅ Опубликовать обзор':
+      case "✅ Опубликовать обзор":
         try {
           if (pendingReview.imageUrl) {
-            await ctx.telegram.sendPhoto(this.channelId, pendingReview.imageUrl, {
-              caption: pendingReview.text,
-              reply_markup: pendingReview.inlineKeyboard,
-            });
+            await ctx.telegram.sendPhoto(
+              this.channelId,
+              pendingReview.imageUrl,
+              {
+                caption: pendingReview.text,
+                reply_markup: pendingReview.inlineKeyboard,
+              },
+            );
           } else {
             await ctx.telegram.sendMessage(this.channelId, pendingReview.text, {
               reply_markup: pendingReview.inlineKeyboard,
             });
           }
-          await ctx.reply('Обзор успешно опубликован!', KeyboardService.getMainKeyboard());
+          await ctx.reply(
+            "Обзор успешно опубликован!",
+            KeyboardService.getMainKeyboard(),
+          );
           this.pendingReviews.delete(userId);
         } catch (error) {
-          console.error('Error publishing review:', error);
-          await ctx.reply('Ошибка при публикации обзора');
+          console.error("Error publishing review:", error);
+          await ctx.reply("Ошибка при публикации обзора");
         }
         break;
 
-      case '📝 Изменить текст обзора':
+      case "📝 Изменить текст обзора":
         await ctx.reply(
-          'Отправьте новый текст для обзора:',
+          "Отправьте новый текст для обзора:",
           KeyboardService.getCancelKeyboard(),
         );
         break;
 
-      case '❌ Отменить публикацию обзора':
+      case "❌ Отменить публикацию обзора":
         this.pendingReviews.delete(userId);
-        await ctx.reply('Публикация обзора отменена', KeyboardService.getMainKeyboard());
+        await ctx.reply(
+          "Публикация обзора отменена",
+          KeyboardService.getMainKeyboard(),
+        );
         break;
 
       default:
         // Handle text modification
-        if (pendingReview && response !== '❌ Отменить') {
+        if (pendingReview && response !== "❌ Отменить") {
           const updatedReview = { ...pendingReview, text: response };
           this.pendingReviews.set(userId, updatedReview);
 
@@ -182,11 +237,11 @@ export class NewsService {
           }
 
           await ctx.reply(
-            'Обновленный пост. Выберите действие:',
+            "Обновленный пост. Выберите действие:",
             Markup.keyboard([
-              ['✅ Опубликовать обзор'],
-              ['📝 Изменить текст обзора'],
-              ['❌ Отменить публикацию обзора'],
+              ["✅ Опубликовать обзор"],
+              ["📝 Изменить текст обзора"],
+              ["❌ Отменить публикацию обзора"],
             ])
               .resize()
               .oneTime(),
@@ -196,126 +251,260 @@ export class NewsService {
     }
   }
 
-  static async publishPPVResults(ctx: Context, url?: string): Promise<void> {
+  static async publishPPVResults(
+    ctx: Context,
+    customUrl?: string,
+  ): Promise<void> {
     try {
-      let articleUrl = url;
-
-      if (!articleUrl) {
-        const responseAllResults = await fetch('https://pwnews.net/news/1-0-21');
-        const htmlAllResults = await responseAllResults.text();
-        const linkMatch = htmlAllResults.match(/href="([^"]+)">Результаты /);
-        articleUrl = linkMatch ? `https://pwnews.net${linkMatch[1]}` : '';
-      }
-
-      if (!articleUrl) {
-        await ctx.reply('Не удалось получить ссылку на результаты');
+      if (!process.env.CHANNEL_USERNAME?.trim()) {
+        await ctx.reply("Ошибка: ID канала не настроен");
         return;
       }
 
-      const response = await fetch(articleUrl);
-      const html = await response.text();
+      let ppvData: {
+        cleanedText: string;
+        articleUrl: string;
+        imageUrl: string;
+      };
 
-      const title = html.match(/<title>(.*?)<\/title>/);
-      const textMessageMatch = html.match(/<div class="textmessage">(.*?)<\/div>/s);
-      const imageMatch = html.match(/<img[^>]+src="([^">]+)"/);
-      const videoMatch = html.match(/https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)/);
+      if (customUrl) {
+        const extractedData = await this.extractPPVDataFromUrl(customUrl);
+        if (!extractedData) {
+          await ctx.reply(
+            "Не удалось извлечь данные из предоставленной ссылки",
+          );
+          return;
+        }
+        ppvData = extractedData;
+      } else {
+        const defaultData = await this.extractPPVData();
+        if (!defaultData) {
+          await ctx.reply("Не удалось извлечь данные о PPV");
+          return;
+        }
+        ppvData = defaultData;
+      }
 
-      const textMessage = textMessageMatch
-        ? textMessageMatch[1]
-          .replace(/<[^>]*>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .trim()
-        : '';
+      const { cleanedText, articleUrl, imageUrl } = ppvData;
+      const blogMatchTitles = this.ppvTitlesForBlogAltMatch(cleanedText);
 
-      const imageUrl = imageMatch
-        ? imageMatch[1].startsWith('http')
-          ? imageMatch[1]
-          : `https://pwnews.net${imageMatch[1]}`
-        : '';
-      const videoUrl = videoMatch ? videoMatch[0] : '';
-      const cleanTitle = title ? title[1].replace(' - PWNews.net', '') : '';
+      const responseVideo = await fetch("https://pwnews.net/blog/");
+      const htmlVideo = await responseVideo.text();
 
-      const cleanedText = `${cleanTitle}\n\n${textMessage}`;
+      const imgRegex =
+        /<a[^>]*href="([^"]*)"[^>]*>\s*<img[^>]*alt="([^"]*)"[^>]*>/gs;
+      let videoUrl = "";
+      let match;
+
+      while ((match = imgRegex.exec(htmlVideo)) !== null) {
+        const hrefUrl = match[1];
+        const altText = match[2];
+
+        if (blogMatchTitles.some((t) => t && altText.includes(t))) {
+          videoUrl = hrefUrl.startsWith("http")
+            ? hrefUrl
+            : `https://pwnews.net${hrefUrl}`;
+          break;
+        }
+      }
+
+      if (!videoUrl) {
+        await ctx.reply("Не удалось найти видео для данного эфира");
+        return;
+      }
 
       const inlineKeyboard = {
         inline_keyboard: [
           [
-            {
-              text: 'РЕЗУЛЬТАТЫ',
-              url: articleUrl,
-            },
+            { text: "Результаты".toUpperCase(), url: articleUrl },
+            { text: "Смотреть".toUpperCase(), url: videoUrl },
           ],
-          ...(videoUrl
-            ? [
-              [
-                {
-                  text: 'СМОТРЕТЬ',
-                  url: videoUrl,
-                },
-              ],
-            ]
-            : []),
         ],
       };
 
-      this.pendingPPVPublications.set(ctx.from!.id, {
-        cleanedText,
-        articleUrl,
-        videoUrl,
-        imageUrl,
-        inlineKeyboard,
+      await ctx.replyWithPhoto(imageUrl.replace(/\/s/g, "/"), {
+        caption: `Результаты ${cleanedText} + запись шоу`,
+        reply_markup: inlineKeyboard,
       });
 
-      if (imageUrl) {
-        await ctx.replyWithPhoto(imageUrl, {
-          caption: cleanedText,
-          reply_markup: inlineKeyboard,
+      if (ctx.from?.id) {
+        this.pendingPPVPublications.set(ctx.from.id, {
+          cleanedText,
+          articleUrl,
+          videoUrl,
+          imageUrl,
+          inlineKeyboard,
         });
-      } else {
-        await ctx.reply(cleanedText, { reply_markup: inlineKeyboard });
       }
 
       await ctx.reply(
-        'Когда опубликовать?',
-        Markup.keyboard([['Сейчас'], ['В 7:30'], ['В 8:30'], ['В 9:00']])
-          .resize()
-          .oneTime(),
+        "Выберете время публикации или вставьте ссылку на другое шоу",
+        Markup.keyboard([
+          ["Сейчас", "В 7:30"],
+          ["В 8:30", "В 9:00"],
+        ]).resize(),
       );
     } catch (error) {
-      console.error('Error in publishPPVResults:', error);
-      await ctx.reply('Произошла ошибка при получении результатов PPV');
+      console.error("Error in publishPPVResults:", error);
+      await ctx.reply("Произошла ошибка при получении результатов PPV");
     }
   }
 
-  static async handlePPVTimeSelection(ctx: Context, timeSelection: string): Promise<void> {
+  private static async extractPPVData(): Promise<{
+    cleanedText: string;
+    articleUrl: string;
+    imageUrl: string;
+  } | null> {
+    try {
+      const response = await fetch("https://pwnews.net/news/1-0-21");
+      const html = await response.text();
+
+      const divMatch = html.match(
+        /<div[^>]*class="[^"]*vidnovosnew-title[^"]*"[^>]*>(.*?)<\/div>/s,
+      );
+
+      if (!divMatch) {
+        return null;
+      }
+
+      const divIndex = html.indexOf(divMatch[0]);
+      const htmlBeforeDiv = html.substring(0, divIndex);
+      const srcMatches = htmlBeforeDiv.match(/src="([^"]+)"/g);
+
+      if (!srcMatches?.length) {
+        return null;
+      }
+
+      const aTagMatch = divMatch[1].match(/<a[^>]*>(.*?)<\/a>/s);
+
+      if (!aTagMatch) {
+        return null;
+      }
+
+      const hrefMatch = divMatch[1].match(/<a[^>]*href="([^"]*)"[^>]*>/);
+
+      if (!hrefMatch) {
+        return null;
+      }
+
+      const articleUrl = hrefMatch[1].startsWith("http")
+        ? hrefMatch[1]
+        : `https://pwnews.net${hrefMatch[1]}`;
+
+      let cleanedText = aTagMatch[1].replace(/<[^>]*>/g, "").trim();
+
+      cleanedText = cleanedText.replace(/^Результаты\s+/i, "");
+      cleanedText = cleanedText.replace(/\s+/g, " ").trim();
+
+      const lastSrcMatch = srcMatches[srcMatches.length - 1];
+      const srcCap = lastSrcMatch.match(/src="([^"]+)"/);
+      if (!srcCap) {
+        return null;
+      }
+      const imageUrl = `https://pwnews.net${srcCap[1]}`;
+
+      return {
+        cleanedText,
+        articleUrl,
+        imageUrl,
+      };
+    } catch (error) {
+      console.error("Error extracting PPV data:", error);
+      return null;
+    }
+  }
+
+  private static async extractPPVDataFromUrl(url: string): Promise<{
+    cleanedText: string;
+    articleUrl: string;
+    imageUrl: string;
+  } | null> {
+    try {
+      const response = await fetch(url);
+      const html = await response.text();
+
+      const imgMatch = html.match(
+        /<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/,
+      );
+
+      if (!imgMatch) {
+        return null;
+      }
+
+      const srcUrl = imgMatch[1];
+      const altText = imgMatch[2];
+
+      const imageUrl = srcUrl.startsWith("http")
+        ? srcUrl
+        : `https://pwnews.net${srcUrl}`;
+
+      let cleanedText = altText.trim();
+
+      cleanedText = cleanedText.replace(/^Результаты\s+/i, "");
+      cleanedText = cleanedText.replace(/\s+/g, " ").trim();
+
+      return {
+        cleanedText,
+        articleUrl: url,
+        imageUrl,
+      };
+    } catch (error) {
+      console.error("Error extracting PPV data from URL:", error);
+      return null;
+    }
+  }
+
+  /** Titles to try against pwnews.net/blog/ <img alt> (full string for display is kept elsewhere; alts may omit the year). */
+  private static ppvTitlesForBlogAltMatch(displayTitle: string): string[] {
+    const normalized = displayTitle.replace(/\s+/g, " ").trim();
+    const currentYear = new Date().getFullYear();
+    const withoutYear = normalized
+      .replace(new RegExp(`\\b${currentYear}\\b`, "g"), "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const keys = [normalized];
+    if (withoutYear.length > 0 && withoutYear !== normalized) {
+      keys.push(withoutYear);
+    }
+    return keys;
+  }
+
+  static async handlePPVTimeSelection(
+    ctx: Context,
+    timeSelection: string,
+  ): Promise<void> {
     const userId = ctx.from!.id;
     const pendingPPV = this.pendingPPVPublications.get(userId);
 
     if (!pendingPPV) {
-      await ctx.reply('Нет ожидающих результатов PPV для публикации');
+      await ctx.reply("Нет ожидающих результатов PPV для публикации");
       return;
     }
 
-    if (timeSelection === 'Сейчас') {
+    if (timeSelection === "Сейчас") {
       try {
-        if (pendingPPV.imageUrl) {
-          await ctx.telegram.sendPhoto(this.channelId, pendingPPV.imageUrl, {
-            caption: pendingPPV.cleanedText,
+        await ctx.telegram.sendPhoto(
+          this.channelId,
+          pendingPPV.imageUrl.replace(/\/s/g, "/"),
+          {
+            caption: `Результаты ${pendingPPV.cleanedText} + запись шоу`,
             reply_markup: pendingPPV.inlineKeyboard,
-          });
-        } else {
-          await ctx.telegram.sendMessage(this.channelId, pendingPPV.cleanedText, {
-            reply_markup: pendingPPV.inlineKeyboard,
-          });
-        }
-        await ctx.reply('Результаты PPV успешно опубликованы!', KeyboardService.getMainKeyboard());
+          },
+        );
+        await ctx.reply(
+          "Результаты PPV успешно опубликованы!",
+          KeyboardService.getMainKeyboard(),
+        );
         this.pendingPPVPublications.delete(userId);
       } catch (error) {
-        console.error('Error publishing PPV results:', error);
-        await ctx.reply('Ошибка при публикации результатов PPV');
+        console.error("Error publishing PPV results:", error);
+        await ctx.reply("Ошибка при публикации результатов PPV");
       }
     } else {
-      await ctx.reply(`Результаты PPV запланированы к публикации ${timeSelection}`, KeyboardService.getMainKeyboard());
+      await ctx.reply(
+        `Результаты PPV запланированы к публикации ${timeSelection}`,
+        KeyboardService.getMainKeyboard(),
+      );
       // Note: In the original NestJS version, this would schedule the publication
       // For Vercel, we'll handle this through cron jobs
     }
@@ -323,20 +512,20 @@ export class NewsService {
 
   static async publishWeeklyResults(ctx: Context): Promise<void> {
     if (!this.channelId) {
-      await ctx.reply('Ошибка: ID канала не настроен');
+      await ctx.reply("Ошибка: ID канала не настроен");
       return;
     }
 
-    const responseAllReviews = await fetch('https://pwnews.net/stuff/');
+    const responseAllReviews = await fetch("https://pwnews.net/stuff/");
     const htmlAllReviews = await responseAllReviews.text();
     const linkMatch = htmlAllReviews.match(
       /href="([^"]+)">Результаты (WWE|AEW) /,
     );
 
-    const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : '';
+    const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : "";
 
     if (!url) {
-      await ctx.reply('Не удалось получить ссылку на обзор');
+      await ctx.reply("Не удалось получить ссылку на обзор");
       return;
     }
 
@@ -349,7 +538,7 @@ export class NewsService {
     );
 
     if (!show) {
-      await ctx.reply('Не удалось получить название шоу из заголовка');
+      await ctx.reply("Не удалось получить название шоу из заголовка");
       return;
     }
 
@@ -357,7 +546,7 @@ export class NewsService {
 
     const dateMatch = title?.[1].match(/(\d{2})\.(\d{2})\.(\d{4})/);
     if (!dateMatch) {
-      await ctx.reply('Не удалось получить дату из заголовка');
+      await ctx.reply("Не удалось получить дату из заголовка");
       return;
     }
 
@@ -366,32 +555,32 @@ export class NewsService {
     const oneDayAgo = new Date(new Date().setHours(0, 0, 0, 0));
     oneDayAgo.setTime(oneDayAgo.getTime() - 24 * 60 * 60 * 1000);
 
-    const responseVideo = await fetch('https://pwnews.net/blog/');
+    const responseVideo = await fetch("https://pwnews.net/blog/");
     const htmlVideo = await responseVideo.text();
     const dateSearch = `${day}.${month}.${year}`;
 
-    const lines = htmlVideo.split('\n');
+    const lines = htmlVideo.split("\n");
     const targetLine = lines.find(
       (line) => line.includes(normalizedShow) && line.includes(dateSearch),
     );
 
-    let videoUrl = '';
-    let videoImageUrl = '';
+    let videoUrl = "";
+    let videoImageUrl = "";
 
     if (targetLine) {
       const hrefMatch = targetLine.match(/href="([^"]+)"/);
       const srcMatch = targetLine.match(/src="([^"]+)"/);
 
-      videoUrl = hrefMatch ? `https://pwnews.net${hrefMatch[1]}` : '';
+      videoUrl = hrefMatch ? `https://pwnews.net${hrefMatch[1]}` : "";
       videoImageUrl = srcMatch
-        ? srcMatch[1].startsWith('http')
+        ? srcMatch[1].startsWith("http")
           ? srcMatch[1]
           : `https://pwnews.net${srcMatch[1]}`
-        : '';
+        : "";
     }
 
     if (!videoUrl || !videoImageUrl) {
-      await ctx.reply('Видео для данного эфира не найдено');
+      await ctx.reply("Видео для данного эфира не найдено");
       return;
     }
 
@@ -400,20 +589,20 @@ export class NewsService {
     const inlineKeyboard = {
       inline_keyboard: [
         [
-          { text: 'Результаты'.toUpperCase(), url },
-          { text: 'Смотреть'.toUpperCase(), url: videoUrl },
+          { text: "Результаты".toUpperCase(), url },
+          { text: "Смотреть".toUpperCase(), url: videoUrl },
         ],
       ],
     };
 
     if (postDate < oneDayAgo) {
-      await ctx.sendPhoto(videoImageUrl.replace(/\/s/g, '/'), {
-        caption: `${text} \n\n• Результаты: ${url.replace('https://', '')} \n• Смотреть: ${videoUrl.replace('https://', '')}`,
+      await ctx.sendPhoto(videoImageUrl.replace(/\/s/g, "/"), {
+        caption: `${text} \n\n• Результаты: ${url.replace("https://", "")} \n• Смотреть: ${videoUrl.replace("https://", "")}`,
         reply_markup: inlineKeyboard,
       });
       await ctx.reply(
         `Последние результаты (${title?.[1]}) слишком старые. Действительно ли я должен опубликовть их? Если что, я сам проверяю актуальые результаты каждый день в 7:30.`,
-        Markup.keyboard([['✅ Да', '❌ Нет']]).resize(),
+        Markup.keyboard([["✅ Да", "❌ Нет"]]).resize(),
       );
 
       // Save data for later use
@@ -422,7 +611,7 @@ export class NewsService {
           text,
           url,
           videoUrl,
-          videoImageUrl: videoImageUrl.replace(/\/s/g, '/'),
+          videoImageUrl: videoImageUrl.replace(/\/s/g, "/"),
           inlineKeyboard,
         });
       }
@@ -432,10 +621,10 @@ export class NewsService {
 
     await ctx.telegram.sendPhoto(
       this.channelId,
-      videoImageUrl.replace(/\/s/g, '/'),
+      videoImageUrl.replace(/\/s/g, "/"),
       {
         caption: this.formatNewsCaption(text, url, videoUrl),
-        parse_mode: 'MarkdownV2',
+        parse_mode: "MarkdownV2",
         reply_markup: inlineKeyboard,
       },
     );
@@ -444,7 +633,7 @@ export class NewsService {
   }
 
   private static escapeMarkdown(text: string): string {
-    return text.replace(/[[\](){}*_#+\-=|>.]/g, '\\$&');
+    return text.replace(/[[\](){}*_#+\-=|>.]/g, "\\$&");
   }
 
   private static formatNewsCaption(
@@ -452,29 +641,35 @@ export class NewsService {
     url: string,
     videoUrl: string,
   ): string {
-    return `${this.escapeMarkdown(text)} \n\n• *Результаты:* ${this.escapeMarkdown(url.replace('https://', ''))} \n• *Смотреть:* ${this.escapeMarkdown(videoUrl.replace('https://', ''))}`;
+    return `${this.escapeMarkdown(text)} \n\n• *Результаты:* ${this.escapeMarkdown(url.replace("https://", ""))} \n• *Смотреть:* ${this.escapeMarkdown(videoUrl.replace("https://", ""))}`;
   }
 
-  static async handleWeeklyConfirmation(ctx: Context, confirmed: boolean): Promise<void> {
+  static async handleWeeklyConfirmation(
+    ctx: Context,
+    confirmed: boolean,
+  ): Promise<void> {
     const userId = ctx.from!.id;
 
     if (confirmed) {
-      await ctx.reply('Результаты еженедельников опубликованы!', KeyboardService.getMainKeyboard());
+      await ctx.reply(
+        "Результаты еженедельников опубликованы!",
+        KeyboardService.getMainKeyboard(),
+      );
       // Implementation would publish all pending weekly results
     } else {
-      await ctx.reply('Публикация отменена', KeyboardService.getMainKeyboard());
+      await ctx.reply("Публикация отменена", KeyboardService.getMainKeyboard());
     }
 
     this.pendingPublications.delete(userId);
   }
 
-
   // Method for cron job to publish daily results automatically
   static async publishDailyResults(): Promise<boolean> {
     try {
-
       if (!this.channelId) {
-        console.error('Error: CHANNEL_USERNAME is not defined in environment variables');
+        console.error(
+          "Error: CHANNEL_USERNAME is not defined in environment variables",
+        );
         return false;
       }
 
@@ -482,16 +677,16 @@ export class NewsService {
       const bot = getBot();
 
       // Fetch latest results from pwnews.net
-      const responseAllReviews = await fetch('https://pwnews.net/stuff/');
+      const responseAllReviews = await fetch("https://pwnews.net/stuff/");
       const htmlAllReviews = await responseAllReviews.text();
       const linkMatch = htmlAllReviews.match(
         /href="([^"]+)">Результаты (WWE|AEW) /,
       );
 
-      const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : '';
+      const url = linkMatch ? `https://pwnews.net${linkMatch[1]}` : "";
 
       if (!url) {
-        console.error('Failed to get results link from pwnews.net/stuff/');
+        console.error("Failed to get results link from pwnews.net/stuff/");
         return false;
       }
 
@@ -504,7 +699,7 @@ export class NewsService {
       );
 
       if (!show) {
-        console.error('Failed to extract show name from title:', title?.[1]);
+        console.error("Failed to extract show name from title:", title?.[1]);
         return false;
       }
 
@@ -512,7 +707,7 @@ export class NewsService {
 
       const dateMatch = title?.[1].match(/(\d{2})\.(\d{2})\.(\d{4})/);
       if (!dateMatch) {
-        console.error('Failed to extract date from title:', title?.[1]);
+        console.error("Failed to extract date from title:", title?.[1]);
         return false;
       }
 
@@ -529,31 +724,36 @@ export class NewsService {
       }
 
       // Fetch video information
-      const responseVideo = await fetch('https://pwnews.net/blog/');
+      const responseVideo = await fetch("https://pwnews.net/blog/");
       const htmlVideo = await responseVideo.text();
 
-      const lines = htmlVideo.split('\n');
+      const lines = htmlVideo.split("\n");
       const targetLine = lines.find(
         (line) => line.includes(normalizedShow) && line.includes(dateSearch),
       );
 
-      let videoUrl = '';
-      let videoImageUrl = '';
+      let videoUrl = "";
+      let videoImageUrl = "";
 
       if (targetLine) {
         const hrefMatch = targetLine.match(/href="([^"]+)"/);
         const srcMatch = targetLine.match(/src="([^"]+)"/);
 
-        videoUrl = hrefMatch ? `https://pwnews.net${hrefMatch[1]}` : '';
+        videoUrl = hrefMatch ? `https://pwnews.net${hrefMatch[1]}` : "";
         videoImageUrl = srcMatch
-          ? srcMatch[1].startsWith('http')
+          ? srcMatch[1].startsWith("http")
             ? srcMatch[1]
             : `https://pwnews.net${srcMatch[1]}`
-          : '';
+          : "";
       }
 
       if (!videoUrl || !videoImageUrl) {
-        console.error('Video not found for show:', normalizedShow, 'date:', dateSearch);
+        console.error(
+          "Video not found for show:",
+          normalizedShow,
+          "date:",
+          dateSearch,
+        );
         return false;
       }
 
@@ -562,8 +762,8 @@ export class NewsService {
       const inlineKeyboard = {
         inline_keyboard: [
           [
-            { text: 'Результаты'.toUpperCase(), url },
-            { text: 'Смотреть'.toUpperCase(), url: videoUrl },
+            { text: "Результаты".toUpperCase(), url },
+            { text: "Смотреть".toUpperCase(), url: videoUrl },
           ],
         ],
       };
@@ -571,10 +771,10 @@ export class NewsService {
       // Publish directly to channel
       await bot.telegram.sendPhoto(
         this.channelId,
-        videoImageUrl.replace(/\/s/g, '/'),
+        videoImageUrl.replace(/\/s/g, "/"),
         {
           caption: this.formatNewsCaption(text, url, videoUrl),
-          parse_mode: 'MarkdownV2',
+          parse_mode: "MarkdownV2",
           reply_markup: inlineKeyboard,
         },
       );
@@ -582,7 +782,7 @@ export class NewsService {
       console.log(`Daily results for ${normalizedShow} published successfully`);
       return true;
     } catch (error) {
-      console.error('Error in daily results publication:', error);
+      console.error("Error in daily results publication:", error);
       return false;
     }
   }
@@ -592,16 +792,19 @@ export class NewsService {
 
     // Start the process - request URL
     this.pendingOtherNews.set(userId, {
-      step: 'waiting_url'
+      step: "waiting_url",
     });
 
     await ctx.reply(
-      '🔗 Пожалуйста, отправьте ссылку на страницу, которую хотите опубликовать:',
-      KeyboardService.getOtherNewsKeyboard()
+      "🔗 Пожалуйста, отправьте ссылку на страницу, которую хотите опубликовать:",
+      KeyboardService.getOtherNewsKeyboard(),
     );
   }
 
-  static async handleOtherNewsInput(ctx: Context, text: string): Promise<boolean> {
+  static async handleOtherNewsInput(
+    ctx: Context,
+    text: string,
+  ): Promise<boolean> {
     const userId = ctx.from!.id;
     const pending = this.pendingOtherNews.get(userId);
 
@@ -609,11 +812,13 @@ export class NewsService {
       return false; // Don't handle if there's no active process
     }
 
-    if (pending.step === 'waiting_url') {
+    if (pending.step === "waiting_url") {
       // Check that this is a valid link
       const urlRegex = /^https?:\/\/.+/;
       if (!urlRegex.test(text)) {
-        await ctx.reply('❌ Пожалуйста, отправьте корректную ссылку (начинающуюся с http:// или https://)');
+        await ctx.reply(
+          "❌ Пожалуйста, отправьте корректную ссылку (начинающуюся с http:// или https://)",
+        );
         return true;
       }
 
@@ -624,50 +829,58 @@ export class NewsService {
 
         // Extract title
         const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].trim().split(' - ')[0] : 'Без заголовка';
+        const title = titleMatch
+          ? titleMatch[1].trim().split(" - ")[0]
+          : "Без заголовка";
 
         // Extract image
-        const imageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)/i) ||
-          html.match(/<img[^>]*src=["']([^"']*)/i);
-        let imageUrl = imageMatch ? imageMatch[1] : '';
+        const imageMatch =
+          html.match(
+            /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)/i,
+          ) || html.match(/<img[^>]*src=["']([^"']*)/i);
+        let imageUrl = imageMatch ? imageMatch[1] : "";
 
         // Make image URL absolute
-        if (imageUrl && !imageUrl.startsWith('http')) {
+        if (imageUrl && !imageUrl.startsWith("http")) {
           const baseUrl = new URL(text).origin;
-          imageUrl = imageUrl.startsWith('/') ? baseUrl + imageUrl : baseUrl + '/' + imageUrl;
+          imageUrl = imageUrl.startsWith("/")
+            ? baseUrl + imageUrl
+            : baseUrl + "/" + imageUrl;
         }
 
         // Update state
         this.pendingOtherNews.set(userId, {
-          step: 'waiting_button_text',
+          step: "waiting_button_text",
           url: text,
           title,
-          imageUrl
+          imageUrl,
         });
 
         await ctx.reply(
           `✅ Страница загружена!\n\n📄 **${title}**\n\n🔘 Теперь введите текст для кнопки под постом (напрмер "ОЦЕНКИ"):`,
           {
-            parse_mode: 'Markdown',
-            ...KeyboardService.getOtherNewsKeyboard()
-          }
+            parse_mode: "Markdown",
+            ...KeyboardService.getOtherNewsKeyboard(),
+          },
         );
-
       } catch (error) {
-        await ctx.reply('❌ Не удалось загрузить страницу. Проверьте ссылку и попробуйте снова.');
+        await ctx.reply(
+          "❌ Не удалось загрузить страницу. Проверьте ссылку и попробуйте снова.",
+        );
         return true;
       }
-
-    } else if (pending.step === 'waiting_button_text') {
+    } else if (pending.step === "waiting_button_text") {
       const buttonText = text.trim() || "ОЦЕНКИ";
 
       const finalPost = {
         ...pending,
-        buttonText
+        buttonText,
       };
 
       // Create final message
-      const postText = finalPost.title + (finalPost.description ? `\n\n${finalPost.description}` : '');
+      const postText =
+        finalPost.title +
+        (finalPost.description ? `\n\n${finalPost.description}` : "");
 
       const inlineKeyboard = {
         inline_keyboard: [
@@ -696,18 +909,18 @@ export class NewsService {
       }
 
       await ctx.reply(
-        'Проверьте пост и выберите действие:',
-        KeyboardService.getOtherNewsConfirmKeyboard()
+        "Проверьте пост и выберите действие:",
+        KeyboardService.getOtherNewsConfirmKeyboard(),
       );
 
       // Save final data for publication
       this.pendingOtherNews.set(userId, {
-        step: 'ready_to_publish',
+        step: "ready_to_publish",
         url: finalPost.url!,
         title: finalPost.title!,
-        description: finalPost.description || '',
-        imageUrl: finalPost.imageUrl || '',
-        buttonText: buttonText
+        description: finalPost.description || "",
+        imageUrl: finalPost.imageUrl || "",
+        buttonText: buttonText,
       });
     }
 
@@ -717,20 +930,28 @@ export class NewsService {
   static async cancelOtherNews(ctx: Context): Promise<void> {
     const userId = ctx.from!.id;
     this.pendingOtherNews.delete(userId);
-    await ctx.reply('❌ Публикация отменена.', KeyboardService.getMainKeyboard());
+    await ctx.reply(
+      "❌ Публикация отменена.",
+      KeyboardService.getMainKeyboard(),
+    );
   }
 
   static async publishOtherNewsToChannel(ctx: Context): Promise<void> {
     const userId = ctx.from!.id;
     const pending = this.pendingOtherNews.get(userId);
 
-    if (!pending || pending.step !== 'ready_to_publish') {
-      await ctx.reply('❌ Нет данных для публикации', KeyboardService.getMainKeyboard());
+    if (!pending || pending.step !== "ready_to_publish") {
+      await ctx.reply(
+        "❌ Нет данных для публикации",
+        KeyboardService.getMainKeyboard(),
+      );
       return;
     }
 
     try {
-      const postText = pending.title + (pending.description ? `\n\n${pending.description}` : '');
+      const postText =
+        pending.title +
+        (pending.description ? `\n\n${pending.description}` : "");
 
       const inlineKeyboard = {
         inline_keyboard: [
@@ -753,22 +974,27 @@ export class NewsService {
         } catch (error) {
           // If image doesn't load, send without it
           await ctx.telegram.sendMessage(this.channelId, postText, {
-            reply_markup: inlineKeyboard
+            reply_markup: inlineKeyboard,
           });
         }
       } else {
         await ctx.telegram.sendMessage(this.channelId, postText, {
-          reply_markup: inlineKeyboard
+          reply_markup: inlineKeyboard,
         });
       }
 
       // Clear state and return to main menu
       this.pendingOtherNews.delete(userId);
-      await ctx.reply('✅ Новость успешно опубликована!', KeyboardService.getMainKeyboard());
-
+      await ctx.reply(
+        "✅ Новость успешно опубликована!",
+        KeyboardService.getMainKeyboard(),
+      );
     } catch (error) {
-      console.error('Error publishing other news:', error);
-      await ctx.reply('❌ Ошибка при публикации. Попробуйте еще раз.', KeyboardService.getMainKeyboard());
+      console.error("Error publishing other news:", error);
+      await ctx.reply(
+        "❌ Ошибка при публикации. Попробуйте еще раз.",
+        KeyboardService.getMainKeyboard(),
+      );
       this.pendingOtherNews.delete(userId);
     }
   }
