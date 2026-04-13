@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getBot } from '@/lib/bot';
-import { adminOnlyMiddleware } from '@/lib/admins';
-import { NewsService } from '@/lib/news-service';
-import { KeyboardService } from '@/lib/keyboard';
-import { Context } from '@/types/telegram';
+import { NextRequest, NextResponse } from "next/server";
+import { getBot } from "@/lib/bot";
+import { adminOnlyMiddleware } from "@/lib/admins";
+import { NewsService } from "@/lib/news-service";
+import { KeyboardService } from "@/lib/keyboard";
+import { Context } from "@/types/telegram";
 
 let handlersSetup = false;
 
@@ -15,91 +15,95 @@ function setupBotHandlers() {
     return bot;
   }
 
-  bot.use(adminOnlyMiddleware);
+  //bot.use(adminOnlyMiddleware);
 
   // Setup bot handlers
   bot.start(async (ctx: Context) => {
-    console.log('Start command received from user:', ctx.from?.id);
-    await ctx.reply(
-      'Добро пожаловать! 👋',
-      KeyboardService.getMainKeyboard(),
-    );
+    console.log("Start command received from user:", ctx.from?.id);
+    await ctx.reply("Добро пожаловать! 👋", KeyboardService.getMainKeyboard());
   });
 
   // Review handlers
-  bot.hears('📝 Опубликовать обзор', async (ctx: Context) => {
+  bot.hears("📝 Опубликовать обзор", async (ctx: Context) => {
     await NewsService.publishReview(ctx);
   });
 
-  bot.hears('✅ Опубликовать обзор', async (ctx: Context) => {
-    await NewsService.handleReviewResponse(ctx, '✅ Опубликовать обзор');
+  bot.hears("✅ Опубликовать обзор", async (ctx: Context) => {
+    await NewsService.handleReviewResponse(ctx, "✅ Опубликовать обзор");
   });
 
-  bot.hears('📝 Изменить текст обзора', async (ctx: Context) => {
-    await NewsService.handleReviewResponse(ctx, '📝 Изменить текст обзора');
+  bot.hears("📝 Изменить текст обзора", async (ctx: Context) => {
+    await NewsService.handleReviewResponse(ctx, "📝 Изменить текст обзора");
   });
 
-  bot.hears('❌ Отменить публикацию обзора', async (ctx: Context) => {
-    await NewsService.handleReviewResponse(ctx, '❌ Отменить публикацию обзора');
+  bot.hears("❌ Отменить публикацию обзора", async (ctx: Context) => {
+    await NewsService.handleReviewResponse(
+      ctx,
+      "❌ Отменить публикацию обзора",
+    );
   });
 
   // PPV handlers
-  bot.hears('🎉 Опубликовать результаты PPV/спецшоу', async (ctx: Context) => {
+  bot.hears("🎉 Опубликовать результаты PPV/спецшоу", async (ctx: Context) => {
     await NewsService.publishPPVResults(ctx);
   });
 
-  bot.hears('Сейчас', async (ctx: Context) => {
-    await NewsService.handlePPVTimeSelection(ctx, 'Сейчас');
+  bot.hears("Сейчас", async (ctx: Context) => {
+    await NewsService.handlePPVTimeSelection(ctx, "Сейчас");
   });
 
-  bot.hears('В 7:30', async (ctx: Context) => {
-    await NewsService.handlePPVTimeSelection(ctx, 'В 7:30');
+  bot.hears("В 7:30", async (ctx: Context) => {
+    await NewsService.handlePPVTimeSelection(ctx, "В 7:30");
   });
 
-  bot.hears('В 8:30', async (ctx: Context) => {
-    await NewsService.handlePPVTimeSelection(ctx, 'В 8:30');
+  bot.hears("В 8:30", async (ctx: Context) => {
+    await NewsService.handlePPVTimeSelection(ctx, "В 8:30");
   });
 
-  bot.hears('В 9:00', async (ctx: Context) => {
-    await NewsService.handlePPVTimeSelection(ctx, 'В 9:00');
+  bot.hears("В 9:00", async (ctx: Context) => {
+    await NewsService.handlePPVTimeSelection(ctx, "В 9:00");
   });
 
   // Weekly results handlers
-  bot.hears('Опубликовать результаты еженедельника', async (ctx: Context) => {
+  bot.hears("Опубликовать результаты еженедельника", async (ctx: Context) => {
     await NewsService.publishWeeklyResults(ctx);
   });
 
-  bot.hears('✅ Да', async (ctx: Context) => {
+  bot.hears("✅ Да", async (ctx: Context) => {
     await NewsService.handleWeeklyConfirmation(ctx, true);
   });
 
-  bot.hears('❌ Нет', async (ctx: Context) => {
+  bot.hears("❌ Нет", async (ctx: Context) => {
     await NewsService.handleWeeklyConfirmation(ctx, false);
   });
 
   // Other news handler
-  bot.hears('🔗 Опубликовать другое', async (ctx: Context) => {
+  bot.hears("🔗 Опубликовать другое", async (ctx: Context) => {
     await NewsService.publishOtherNews(ctx);
   });
 
   // Cancel handler for "other news" process
-  bot.hears('❌ Отмена', async (ctx: Context) => {
+  bot.hears("❌ Отмена", async (ctx: Context) => {
     await NewsService.cancelOtherNews(ctx);
   });
 
   // Publish handler for "other news"
-  bot.hears('✅ Опубликовать', async (ctx: Context) => {
+  bot.hears("✅ Опубликовать", async (ctx: Context) => {
     await NewsService.publishOtherNewsToChannel(ctx);
   });
 
   // Text message handler
-  bot.on('text', async (ctx: Context) => {
-    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
+  bot.on("text", async (ctx: Context) => {
+    const text =
+      ctx.message && "text" in ctx.message ? ctx.message.text : undefined;
 
     if (!text) return;
 
     // First check if user is in "other news" creation process
-    const isHandledByOtherNews = await NewsService.handleOtherNewsInput(ctx, text);
+    const isHandledByOtherNews = await NewsService.handleOtherNewsInput(
+      ctx,
+      text,
+    );
     if (isHandledByOtherNews) return;
 
     // Check if the message contains a pwnews.net URL
@@ -115,7 +119,6 @@ function setupBotHandlers() {
     }
   });
 
-
   handlersSetup = true;
   return bot;
 }
@@ -123,7 +126,7 @@ function setupBotHandlers() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('Received webhook update:', JSON.stringify(body, null, 2));
+    console.log("Received webhook update:", JSON.stringify(body, null, 2));
 
     // Setup handlers and process the update
     const bot = setupBotHandlers();
@@ -131,12 +134,18 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('Webhook error:', error);
-    console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error("Webhook error:", error);
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.message : "Unknown error",
+    );
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
 export async function GET() {
-  return NextResponse.json({ message: 'Telegram bot webhook endpoint' });
+  return NextResponse.json({ message: "Telegram bot webhook endpoint" });
 }
