@@ -27,7 +27,8 @@ export class NewsService {
       return t;
     }
 
-    const titleLike = (s: string) => /^Обзор\s.+-\s*Новости/i.test(s.trim());
+    const titleLike = (s: string) =>
+      /^Обзор\s.+-\s*Новости/i.test(s.trim());
 
     const blocks = t
       .split(/\n\s*\n/)
@@ -596,7 +597,7 @@ export class NewsService {
 
     if (postDate < oneDayAgo) {
       await ctx.sendPhoto(videoImageUrl.replace(/\/s/g, "/"), {
-        caption: `${text} \n\n• Результаты: ${url} \n• Смотреть: ${videoUrl}`,
+        caption: `${text} \n\n• Результаты: ${url.replace("https://", "")} \n• Смотреть: ${videoUrl.replace("https://", "")}`,
         reply_markup: inlineKeyboard,
       });
       await ctx.reply(
@@ -640,7 +641,7 @@ export class NewsService {
     url: string,
     videoUrl: string,
   ): string {
-    return `${this.escapeMarkdown(text)} \n\n• *Результаты:* ${this.escapeMarkdown(url)} \n• *Смотреть:* ${this.escapeMarkdown(videoUrl)}`;
+    return `${this.escapeMarkdown(text)} \n\n• *Результаты:* ${this.escapeMarkdown(url.replace("https://", ""))} \n• *Смотреть:* ${this.escapeMarkdown(videoUrl.replace("https://", ""))}`;
   }
 
   static async handleWeeklyConfirmation(
