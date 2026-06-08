@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBot } from "@/lib/bot";
-import { adminOnlyMiddleware } from "@/lib/admins";
+import { adminOnlyMiddleware, isAdmin } from "@/lib/admins";
+import { CronPauseService } from "@/lib/cron-pause";
 import { NewsService } from "@/lib/news-service";
 import { KeyboardService } from "@/lib/keyboard";
 import { Context } from "@/types/telegram";
@@ -80,6 +81,28 @@ function setupBotHandlers() {
   // Other news handler
   bot.hears("🔗 Опубликовать другое", async (ctx: Context) => {
     await NewsService.publishOtherNews(ctx);
+  });
+
+  bot.hears(CronPauseService.BUTTON_LABEL, async (ctx: Context) => {
+    if (!isAdmin(ctx)) {
+      await ctx.reply("Доступ запрещён.");
+      return;
+    }
+
+    const pauseUntil = await CronPauseService.getPauseUntil();
+    if (pauseUntil) {
+      await ctx.reply(
+        CronPauseService.getAlreadyPausedMessage(pauseUntil),
+        KeyboardService.getMainKeyboard(),
+      );
+      return;
+    }
+
+    const until = await CronPauseService.pauseFor12Hours();
+    await ctx.reply(
+      CronPauseService.getPausedMessage(until),
+      KeyboardService.getMainKeyboard(),
+    );
   });
 
   // Cancel handler for "other news" process

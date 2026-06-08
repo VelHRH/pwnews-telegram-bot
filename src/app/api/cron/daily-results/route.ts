@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { CronPauseService } from '@/lib/cron-pause';
 import { NewsService } from '@/lib/news-service';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -7,6 +8,18 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (await CronPauseService.isPaused()) {
+      const pauseUntil = await CronPauseService.getPauseUntil();
+      console.log(
+        `Daily results cron skipped — paused until ${pauseUntil ? new Date(pauseUntil).toISOString() : 'unknown'}`,
+      );
+      return NextResponse.json({
+        message: 'Cron jobs are paused',
+        pausedUntil: pauseUntil ? new Date(pauseUntil).toISOString() : null,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     console.log('Starting daily results publication cron job');

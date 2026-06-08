@@ -1,4 +1,5 @@
 import { Markup } from 'telegraf';
+import { CronPauseService } from '@/lib/cron-pause';
 
 export class KeyboardService {
   static getMainKeyboard() {
@@ -7,6 +8,7 @@ export class KeyboardService {
       ['🎉 Опубликовать результаты PPV/спецшоу'],
       ['Опубликовать результаты еженедельника'],
       ['🔗 Опубликовать другое'],
+      [CronPauseService.BUTTON_LABEL],
     ])
       .resize()
       .placeholder('Нажмите, чтобы создать пост');
