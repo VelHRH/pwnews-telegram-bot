@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBot } from "@/lib/bot";
-import { adminOnlyMiddleware, isAdmin } from "@/lib/admins";
+import { adminOnlyMiddleware } from "@/lib/admins";
 import { CronPauseService } from "@/lib/cron-pause";
 import { NewsService } from "@/lib/news-service";
 import { KeyboardService } from "@/lib/keyboard";
@@ -16,12 +16,14 @@ function setupBotHandlers() {
     return bot;
   }
 
-  //bot.use(adminOnlyMiddleware);
+  bot.use(adminOnlyMiddleware);
 
-  // Setup bot handlers
   bot.start(async (ctx: Context) => {
     console.log("Start command received from user:", ctx.from?.id);
-    await ctx.reply("Добро пожаловать! 👋", KeyboardService.getMainKeyboard());
+    await ctx.reply(
+      "Добро пожаловать! 👋",
+      await KeyboardService.getMainKeyboard(),
+    );
   });
 
   // Review handlers
@@ -83,27 +85,30 @@ function setupBotHandlers() {
     await NewsService.publishOtherNews(ctx);
   });
 
-  bot.hears(CronPauseService.BUTTON_LABEL, async (ctx: Context) => {
-    if (!isAdmin(ctx)) {
-      await ctx.reply("Доступ запрещён.");
-      return;
-    }
+  bot.hears(
+    [
+      CronPauseService.PAUSE_BUTTON_LABEL,
+      CronPauseService.RESUME_BUTTON_LABEL,
+    ],
+    async (ctx: Context) => {
+      const pauseUntil = await CronPauseService.getPauseUntil();
 
-    const pauseUntil = await CronPauseService.getPauseUntil();
-    if (pauseUntil) {
+      if (pauseUntil) {
+        await CronPauseService.clearPause();
+        await ctx.reply(
+          CronPauseService.getResumedMessage(),
+          await KeyboardService.getMainKeyboard(),
+        );
+        return;
+      }
+
+      const until = await CronPauseService.pauseFor12Hours();
       await ctx.reply(
-        CronPauseService.getAlreadyPausedMessage(pauseUntil),
-        KeyboardService.getMainKeyboard(),
+        CronPauseService.getPausedMessage(until),
+        await KeyboardService.getMainKeyboard(),
       );
-      return;
-    }
-
-    const until = await CronPauseService.pauseFor12Hours();
-    await ctx.reply(
-      CronPauseService.getPausedMessage(until),
-      KeyboardService.getMainKeyboard(),
-    );
-  });
+    },
+  );
 
   // Cancel handler for "other news" process
   bot.hears("❌ Отмена", async (ctx: Context) => {

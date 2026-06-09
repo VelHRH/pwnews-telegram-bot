@@ -1,12 +1,13 @@
-import type { Context } from '@/types/telegram';
+import { Markup } from "telegraf";
+import type { Context } from "@/types/telegram";
 
 function loadAdminUsernames(): Set<string> {
-  const raw = process.env.ADMINS_LIST?.trim() ?? '';
+  const raw = process.env.ADMINS_LIST?.trim() ?? "";
   if (!raw) return new Set();
   return new Set(
     raw
-      .split(',')
-      .map((s) => s.trim().replace(/^@/, '').toLowerCase())
+      .split(",")
+      .map((s) => s.trim().replace(/^@/, "").toLowerCase())
       .filter(Boolean),
   );
 }
@@ -19,7 +20,12 @@ export function isAdmin(ctx: Context): boolean {
   return adminUsernames.has(username.toLowerCase());
 }
 
-/** Reject updates from users not listed in ADMINS_LIST. */
+function isStartCommand(ctx: Context): boolean {
+  const msg = ctx.message;
+  if (!msg || !("text" in msg) || typeof msg.text !== "string") return false;
+  return msg.text.startsWith("/start");
+}
+
 export async function adminOnlyMiddleware(
   ctx: Context,
   next: () => Promise<void>,
@@ -28,8 +34,14 @@ export async function adminOnlyMiddleware(
     await next();
     return;
   }
-  const msg = ctx.message;
-  if (msg && 'text' in msg && typeof msg.text === 'string') {
-    await ctx.reply('Доступ запрещён.');
+
+  if (isStartCommand(ctx)) {
+    await ctx.reply("Доступ запрещён.", Markup.removeKeyboard());
+    if (ctx.chat?.id) {
+      await ctx.telegram.setMyCommands([], {
+        type: "chat",
+        chat_id: ctx.chat.id,
+      });
+    }
   }
 }

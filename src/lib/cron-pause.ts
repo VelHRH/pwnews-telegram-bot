@@ -1,7 +1,7 @@
-const PAUSE_KEY = 'cron_pause_until';
+const PAUSE_KEY = "cron_pause_until";
 const PAUSE_HOURS = 12;
 const PAUSE_MS = PAUSE_HOURS * 60 * 60 * 1000;
-const MOSCOW_TZ = 'Europe/Moscow';
+const MOSCOW_TZ = "Europe/Moscow";
 
 let memoryPauseUntil: number | null = null;
 
@@ -11,7 +11,7 @@ function getKvConfig(): { url: string; token: string } | null {
     process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token) return null;
-  return { url: url.replace(/\/$/, ''), token };
+  return { url: url.replace(/\/$/, ""), token };
 }
 
 async function kvGet(key: string): Promise<string | null> {
@@ -20,11 +20,11 @@ async function kvGet(key: string): Promise<string | null> {
 
   const response = await fetch(`${config.url}/get/${key}`, {
     headers: { Authorization: `Bearer ${config.token}` },
-    cache: 'no-store',
+    cache: "no-store",
   });
 
   if (!response.ok) {
-    console.error('KV get failed:', response.status, await response.text());
+    console.error("KV get failed:", response.status, await response.text());
     return null;
   }
 
@@ -44,12 +44,12 @@ async function kvSet(
     `${config.url}/set/${key}/${value}?ex=${ttlSeconds}`,
     {
       headers: { Authorization: `Bearer ${config.token}` },
-      cache: 'no-store',
+      cache: "no-store",
     },
   );
 
   if (!response.ok) {
-    console.error('KV set failed:', response.status, await response.text());
+    console.error("KV set failed:", response.status, await response.text());
     return false;
   }
 
@@ -62,32 +62,31 @@ async function kvDel(key: string): Promise<void> {
 
   await fetch(`${config.url}/del/${key}`, {
     headers: { Authorization: `Bearer ${config.token}` },
-    cache: 'no-store',
+    cache: "no-store",
   });
 }
 
 function formatMoscowTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('ru-RU', {
+  return new Date(timestamp).toLocaleString("ru-RU", {
     timeZone: MOSCOW_TZ,
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 function formatRemaining(until: number): string {
   const remainingMs = Math.max(0, until - Date.now());
   const hours = Math.floor(remainingMs / (60 * 60 * 1000));
-  const minutes = Math.floor(
-    (remainingMs % (60 * 60 * 1000)) / (60 * 1000),
-  );
+  const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
   return `${hours}ч ${minutes}м`;
 }
 
 export class CronPauseService {
-  static readonly BUTTON_LABEL = '⏸ Отключить крон на 12ч';
+  static readonly PAUSE_BUTTON_LABEL = "⏸ Отключить все задачи на 12ч";
+  static readonly RESUME_BUTTON_LABEL = "▶️ Возобновить все задачи";
 
   static async getPauseUntil(): Promise<number | null> {
     const fromKv = await kvGet(PAUSE_KEY);
@@ -121,7 +120,7 @@ export class CronPauseService {
       memoryPauseUntil = until;
       if (!getKvConfig()) {
         console.warn(
-          'KV/Redis not configured — cron pause stored in memory only (may not persist across serverless invocations)',
+          "KV/Redis not configured — cron pause stored in memory only (may not persist across serverless invocations)",
         );
       }
     }
@@ -134,17 +133,20 @@ export class CronPauseService {
     memoryPauseUntil = null;
   }
 
-  static getAlreadyPausedMessage(until: number): string {
-    return (
-      `Крон-задачи уже отключены.\n` +
-      `Автопубликация включится ${formatMoscowTime(until)} (МСК) — через ${formatRemaining(until)}.`
-    );
+  static getResumedMessage(): string {
+    return "Автоматические задачи возобновлены.";
   }
 
   static getPausedMessage(until: number): string {
     return (
-      `Крон-задачи отключены на ${PAUSE_HOURS} часов.\n` +
-      `Автопубликация включится ${formatMoscowTime(until)} (МСК).`
+      `Автоматические задачи отключены на ${PAUSE_HOURS} часов.\n` +
+      `Включатся ${formatMoscowTime(until)} (МСК) — через ${formatRemaining(until)}.`
     );
+  }
+
+  static async getToggleButtonLabel(): Promise<string> {
+    return (await this.isPaused())
+      ? this.RESUME_BUTTON_LABEL
+      : this.PAUSE_BUTTON_LABEL;
   }
 }

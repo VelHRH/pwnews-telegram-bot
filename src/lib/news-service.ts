@@ -27,8 +27,7 @@ export class NewsService {
       return t;
     }
 
-    const titleLike = (s: string) =>
-      /^Обзор\s.+-\s*Новости/i.test(s.trim());
+    const titleLike = (s: string) => /^Обзор\s.+-\s*Новости/i.test(s.trim());
 
     const blocks = t
       .split(/\n\s*\n/)
@@ -195,7 +194,7 @@ export class NewsService {
           }
           await ctx.reply(
             "Обзор успешно опубликован!",
-            KeyboardService.getMainKeyboard(),
+            await KeyboardService.getMainKeyboard(),
           );
           this.pendingReviews.delete(userId);
         } catch (error) {
@@ -215,7 +214,7 @@ export class NewsService {
         this.pendingReviews.delete(userId);
         await ctx.reply(
           "Публикация обзора отменена",
-          KeyboardService.getMainKeyboard(),
+          await KeyboardService.getMainKeyboard(),
         );
         break;
 
@@ -493,7 +492,7 @@ export class NewsService {
         );
         await ctx.reply(
           "Результаты PPV успешно опубликованы!",
-          KeyboardService.getMainKeyboard(),
+          await KeyboardService.getMainKeyboard(),
         );
         this.pendingPPVPublications.delete(userId);
       } catch (error) {
@@ -503,7 +502,7 @@ export class NewsService {
     } else {
       await ctx.reply(
         `Результаты PPV запланированы к публикации ${timeSelection}`,
-        KeyboardService.getMainKeyboard(),
+        await KeyboardService.getMainKeyboard(),
       );
       // Note: In the original NestJS version, this would schedule the publication
       // For Vercel, we'll handle this through cron jobs
@@ -653,11 +652,14 @@ export class NewsService {
     if (confirmed) {
       await ctx.reply(
         "Результаты еженедельников опубликованы!",
-        KeyboardService.getMainKeyboard(),
+        await KeyboardService.getMainKeyboard(),
       );
       // Implementation would publish all pending weekly results
     } else {
-      await ctx.reply("Публикация отменена", KeyboardService.getMainKeyboard());
+      await ctx.reply(
+        "Публикация отменена",
+        await KeyboardService.getMainKeyboard(),
+      );
     }
 
     this.pendingPublications.delete(userId);
@@ -932,7 +934,7 @@ export class NewsService {
     this.pendingOtherNews.delete(userId);
     await ctx.reply(
       "❌ Публикация отменена.",
-      KeyboardService.getMainKeyboard(),
+      await KeyboardService.getMainKeyboard(),
     );
   }
 
@@ -943,7 +945,7 @@ export class NewsService {
     if (!pending || pending.step !== "ready_to_publish") {
       await ctx.reply(
         "❌ Нет данных для публикации",
-        KeyboardService.getMainKeyboard(),
+        await KeyboardService.getMainKeyboard(),
       );
       return;
     }
@@ -987,13 +989,13 @@ export class NewsService {
       this.pendingOtherNews.delete(userId);
       await ctx.reply(
         "✅ Новость успешно опубликована!",
-        KeyboardService.getMainKeyboard(),
+        await KeyboardService.getMainKeyboard(),
       );
     } catch (error) {
       console.error("Error publishing other news:", error);
       await ctx.reply(
         "❌ Ошибка при публикации. Попробуйте еще раз.",
-        KeyboardService.getMainKeyboard(),
+        await KeyboardService.getMainKeyboard(),
       );
       this.pendingOtherNews.delete(userId);
     }

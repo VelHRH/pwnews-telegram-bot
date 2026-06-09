@@ -2,13 +2,15 @@ import { Markup } from 'telegraf';
 import { CronPauseService } from '@/lib/cron-pause';
 
 export class KeyboardService {
-  static getMainKeyboard() {
+  static async getMainKeyboard() {
+    const toggleButton = await CronPauseService.getToggleButtonLabel();
+
     return Markup.keyboard([
       ['📝 Опубликовать обзор'],
       ['🎉 Опубликовать результаты PPV/спецшоу'],
       ['Опубликовать результаты еженедельника'],
       ['🔗 Опубликовать другое'],
-      [CronPauseService.BUTTON_LABEL],
+      [toggleButton],
     ])
       .resize()
       .placeholder('Нажмите, чтобы создать пост');
