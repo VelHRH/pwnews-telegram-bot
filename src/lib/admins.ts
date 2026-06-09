@@ -39,8 +39,7 @@ export async function adminOnlyMiddleware(
     await ctx.reply("Доступ запрещён.", Markup.removeKeyboard());
     if (ctx.chat?.id) {
       await ctx.telegram.setMyCommands([], {
-        type: "chat",
-        chat_id: ctx.chat.id,
+        scope: { type: "chat", chat_id: ctx.chat.id },
       });
     }
   }
