@@ -3,6 +3,7 @@ import { getBot } from "@/lib/bot";
 import { adminOnlyMiddleware } from "@/lib/admins";
 import { CronPauseService } from "@/lib/cron-pause";
 import { NewsService } from "@/lib/news-service";
+import { InstagramRepostService } from "@/lib/instagram-repost-service";
 import { KeyboardService } from "@/lib/keyboard";
 import { Context } from "@/types/telegram";
 
@@ -85,6 +86,11 @@ function setupBotHandlers() {
     await NewsService.publishOtherNews(ctx);
   });
 
+  // Instagram repost handler
+  bot.hears("📸 Репост в Instagram", async (ctx: Context) => {
+    await InstagramRepostService.startRepost(ctx);
+  });
+
   bot.hears(
     [
       CronPauseService.PAUSE_BUTTON_LABEL,
@@ -110,8 +116,11 @@ function setupBotHandlers() {
     },
   );
 
-  // Cancel handler for "other news" process
+  // Cancel handler for "other news" and Instagram repost flows
   bot.hears("❌ Отмена", async (ctx: Context) => {
+    if (await InstagramRepostService.cancel(ctx)) {
+      return;
+    }
     await NewsService.cancelOtherNews(ctx);
   });
 
@@ -120,12 +129,37 @@ function setupBotHandlers() {
     await NewsService.publishOtherNewsToChannel(ctx);
   });
 
+  bot.on("photo", async (ctx: Context) => {
+    const handled = await InstagramRepostService.handleForwardedPhoto(ctx);
+    if (handled) return;
+  });
+
+  bot.on("document", async (ctx: Context) => {
+    const document = ctx.message?.document;
+    if (!document?.mime_type?.startsWith("image/")) {
+      return;
+    }
+
+    const handled = await InstagramRepostService.handleForwardedPhoto(ctx);
+    if (handled) return;
+  });
+
   // Text message handler
   bot.on("text", async (ctx: Context) => {
     const text =
       ctx.message && "text" in ctx.message ? ctx.message.text : undefined;
 
     if (!text) return;
+
+    if (
+      InstagramRepostService.isWaiting(ctx.from!.id) &&
+      text !== "❌ Отмена"
+    ) {
+      await ctx.reply(
+        "Перешлите пост из канала с фото (не отправляйте текст отдельно).",
+      );
+      return;
+    }
 
     // First check if user is in "other news" creation process
     const isHandledByOtherNews = await NewsService.handleOtherNewsInput(

@@ -46,24 +46,18 @@ export class NewsService {
   }
 
   private static trimTextAtReviewerName(text: string): string {
-    const sentences = text
-      .split(/[.!?]+/)
-      .filter((sentence) => sentence.trim().length > 0);
+    // Split into sentences but KEEP their terminating punctuation
+    const sentences = text.match(/[^.!?]+[.!?]*/g) ?? [];
 
     for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i].trim();
-
       // Check if the sentence contains one of the reviewer names
       const containsReviewerName = reviewersNames.some((name) =>
-        sentence.toLowerCase().includes(name.toLowerCase()),
+        sentences[i].toLowerCase().includes(name.toLowerCase()),
       );
 
       if (containsReviewerName) {
-        // Return text up to this sentence
-        return (
-          sentences.slice(0, i).join(". ").trim() +
-          (sentences.slice(0, i).length > 0 ? "." : "")
-        );
+        // Return text up to this sentence, preserving original punctuation
+        return sentences.slice(0, i).join("").trim();
       }
     }
 

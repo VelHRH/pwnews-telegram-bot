@@ -10,6 +10,7 @@ export class KeyboardService {
       ["🎉 Опубликовать результаты PPV/спецшоу"],
       ["Опубликовать результаты еженедельника"],
       ["🔗 Опубликовать другое"],
+      ["📸 Репост в Instagram"],
       [toggleButton],
     ])
       .resize()
@@ -30,6 +31,12 @@ export class KeyboardService {
 
   static getOtherNewsConfirmKeyboard() {
     return Markup.keyboard([["✅ Опубликовать"], ["❌ Отмена"]])
+      .resize()
+      .oneTime();
+  }
+
+  static getInstagramRepostKeyboard() {
+    return Markup.keyboard([["❌ Отмена"]])
       .resize()
       .oneTime();
   }
